@@ -32,11 +32,31 @@
 #include "common.h"
 
 #define YYDEBUG 1
-#define YYSTYPE ext::forth_namespace
+#define YYTYPE yylval
+
+//-- FUNCTION DEFINITIONS ---------------------------------
+
+extern int yyparse();
+extern int yylex();
+
+extern int yyerror(const char*);
 
 #include "forth.tab.hpp"
+#undef yywrap
 
-// my own namespace: non-standard !!
+size_t strlen(const char * _str)
+{
+    size_t i = 0;
+    while(_str[i++]);
+    return i;
+}
+
+int yyerror(const char *p) {
+    fprintf(stderr,"error:%d:%s\n",yyget_lineno(),p);
+    return yyget_lineno();
+}
+
+int yywrap() { return 1; }
 
 %}
 
@@ -157,3 +177,51 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 
 <<EOF>>         { return 0; }
 %%
+
+//-- FUNCTION DEFINITIONS ---------------------------------
+int main(int argc, char **argv)
+{
+    if (argc < 3) {
+        fprintf(stderr,"usage: <inputfile> <outputfile>\n");
+        return 1;
+    }
+
+    FILE *fr = fopen(argv[1],"r"); if (!fr) return yyerror("can not open input file!");
+    FILE *fw = fopen(argv[2],"w"); if (!fw) return yyerror("can not open write file!");
+
+    fseek(fr, 0, SEEK_END); ext::yyget_line_gap = ftell(fr);
+    fseek(fr, 0, SEEK_SET);
+
+    // get lines of "fr" ...
+    int  _lineno = 1;
+    char ch;
+    do {
+        ch = fgetc(fr);
+        if (ch == '\n') ++_lineno;
+    } while (ch != EOF);
+
+    fseek(fr, 0, SEEK_SET);
+
+    // for listing mode
+    char buffer[] = "1234567890abcdefghijklmnopqrstuvwxyz";
+    sprintf(buffer,"%d",ext::yyget_line_gap);
+    ext::yymet_line_gap = strlen(buffer);
+
+    yyset_in (fr);
+    yyset_out(fw);
+    yyset_lineno(0);
+
+    ext::forth_namespace init_forth;
+    init_forth.id = std::string("root");
+    ext::forth_memory.push_back(init_forth );
+
+    int result = yyparse();
+
+    std::cout << "compiled lines: " << _lineno << std::endl;
+    std::cout << "done." <<
+    std::endl;
+
+    fclose(fw);
+    return result;
+}
+
