@@ -1,0 +1,107 @@
+%{
+// --------------------------------------------------------------------------------
+// MIT License
+//
+// Copyright (c) 2018 Jens Kallup
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+// --------------------------------------------------------------------------------
+#include <stdio.h>
+#include <strings.h>
+#include <stdlib.h>
+#include <sys/types.h>
+
+#include "common.h"
+#define YYSTYPE forth_namespace
+%}
+
+//-- SYMBOL SEMANTIC VALUES -----------------------------
+%token _IDENT_
+%token _SUBROUTINE_
+
+%start forth_parser;
+
+//-- GRAMMAR RULES ---------------------------------------
+%%
+
+forth_parser : ;
+
+
+%%
+//-- FUNCTION DEFINITIONS ---------------------------------
+size_t strlen(const char * _str)
+{
+    size_t i = 0;
+    while(_str[i++]);
+    return i;
+}
+
+int yyerror(const char *p) {
+    fprintf(stderr,"error:%d:%s\n",yyget_lineno(),p);
+    return yyget_lineno();
+}
+
+int yywrap() { return 1; }
+
+int main(int argc, char **argv)
+{
+    if (argc < 3) {
+        fprintf(stderr,"usage: <inputfile> <outputfile>\n");
+        return 1;
+    }
+
+    FILE *fr = fopen(argv[1],"r"); if (!fr) return yyerror("can not open input file!");
+    FILE *fw = fopen(argv[2],"w"); if (!fw) return yyerror("can not open write file!");
+
+    fseek(fr, 0, SEEK_END); ext::yyget_line_gap = ftell(fr);
+    fseek(fr, 0, SEEK_SET);
+
+    // get lines of "fr" ...
+    int  _lineno = 1;
+    char ch;
+    do {
+        ch = fgetc(fr);
+        if (ch == '\n') ++_lineno;
+    } while (ch != EOF);
+
+    fseek(fr, 0, SEEK_SET);
+
+    // for listing mode
+    char buffer[] = "1234567890abcdefghijklmnopqrstuvwxyz";
+    sprintf(buffer,"%d",ext::yyget_line_gap);
+    ext::yymet_line_gap = strlen(buffer);
+
+    yyset_in (fr);
+    yyset_out(fw);
+    yyset_lineno(0);
+
+    ext::forth_namespace init_forth;
+    init_forth.id = std::string("root");
+    ext::forth_memory.push_back(init_forth );
+
+    int result = yyparse();
+
+    std::cout << "compiled lines: " << _lineno << std::endl;
+    std::cout << "done." <<
+    std::endl;
+
+    fclose(fw);
+    return result;
+}
+

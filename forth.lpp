@@ -1,0 +1,159 @@
+%{
+// --------------------------------------------------------------------------------
+// MIT License
+//
+// Copyright (c) 2018 Jens Kallup
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+// --------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <strings.h>
+#include <ctype.h>
+#include <limits.h>
+#include <sys/types.h>
+
+#include "common.h"
+
+#define YYDEBUG 1
+#define YYSTYPE ext::forth_namespace
+
+#include "forth.tab.hpp"
+
+// my own namespace: non-standard !!
+
+%}
+
+%option noyywrap
+%option caseless
+
+DIGIT       [0-9]
+num         {DIGIT}+
+ws          [ \t\n\r]
+REMS1       ^[c|C].*\n
+gotoline    ^[0-9]+
+ident       [a-zA-Z]+[a-zA-Z0-9_]*
+
+dimsid0     {ws}*{ident}{ws}*"("
+dimsid1     {ws}*{ident}{ws}*
+dimsid2     {ws}*","{ws}*
+
+dimsidA     {dimsid0}{dimsid1}")"
+dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
+
+%x subser subser_parameter dimens
+%%
+
+^\!.*\n     { std::cout << ext::yypadding(yytext); }
+^\*.*\n     { std::cout << ext::yypadding(yytext); }
+^[c|C].*\n  { std::cout << ext::yypadding(yytext); }
+
+{ws}*       { }
+{gotoline}  {
+    std::stringstream ss;
+    ss  << std::string("L")
+        << std::string(yytext)
+        << std::string(":\n");
+    std::cout << ss.str();
+}
+
+([g|G][o|O][t|T][o|O]){num} {
+    std::cout << std::string(yytext);
+    BEGIN(INITIAL);
+}
+
+([p|P][r|R][o|O][g|G][r|R][a|A][m|M]){ws}*{ident} {
+    std::string st = std::string(yytext);
+    st.erase(0,strlen("program"));
+
+    std::cout << ext::yypadding(yytext);
+
+    std::cout
+    << "\nBITS 32\n"
+    << "main:\n"
+    << "\tpush\tebp\n"
+    << "\tmov\tebp, esp\n"
+    << "\tsub\tesp, 16\n";
+
+    BEGIN(INITIAL);
+}
+([e|E][n|N][d|D]) {
+    std::cout << std::string("\tleave\n\tret\n\n");
+}
+
+([s|S][u|U][b|B][r|R][o|O][u|U][t|T][i|I][n|N][e|E]) {      // subroutine
+    ext::current_flag = ext::ForthFlags::FLAG_SUROUTINE;
+    BEGIN(subser);
+}
+
+[d|D][i|I][m|M][e|E][n|n][s|S][i|I][o|O][n|N] {             // dimension
+    BEGIN(dimens);
+}
+
+<dimens>(({dimsidA}|{dimsidB})|(({dimsidA}|{dimsidB}){ws}*","{ws}*({dimsidA}|{dimsidB}))) {
+    std::cout << std::string("\ndimensA: ") << std::string(yytext);
+    BEGIN(INITIAL);
+}
+
+<subser>{ws}*   { }
+<subser>{ident} {
+    std::stringstream ss;
+    ss  << std::string("subroutine: ")
+        << std::string(yytext)
+        << std::endl;
+
+    std::cout << ext::yypadding(ss.str());
+    std::cout << std::string(yytext) << ":" << std::endl;
+    ext::forth_memory.push_back(std::string(yytext));
+
+    std::cout << "\tpush\tebp"     << std::endl;
+    std::cout << "\tmov\tebp, esp" << std::endl;
+
+    BEGIN(subser_parameter);
+}
+<subser>\n   { ++yylineno; }
+
+<subser_parameter>{ws}*"("(({ws}*)|({ws}*{ident}{ws}*)|({ws}*{ident}{ws}*","{ws}*{ident}{ws}*)|(({ws}*{ident}",")*{ws}*{ident}{ws}*))")" {
+    std::string st = std::string(yytext);
+    ext::removeCharsFromString(st,(char*)"() ");
+
+    std::vector<std::string> parameter;
+    parameter = ext::split(st,',');
+
+    std::cout << "\tsub\tesp, " << ((parameter.size() * sizeof(uint32_t)) + sizeof(uint32_t));
+    std::cout << std::endl;
+
+    for (auto &pav: parameter) {
+        ext::tmp_parameter += 1;
+        ext::tmp_string_stream << "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter * sizeof(uint32_t));
+        ext::tmp_string_stream << "], " << pav << "\n";
+    }
+
+    std::cout << ext::tmp_string_stream.str();
+    BEGIN(INITIAL);
+}
+<subser_parameter>\n  { ++yylineno; }
+
+.   {
+    yyerror("unknow character.");
+    exit(1);
+}
+
+<<EOF>>         { return 0; }
+%%
