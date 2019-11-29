@@ -302,6 +302,7 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 //-- FUNCTION DEFINITIONS ---------------------------------
 int main(int argc, char **argv)
 {
+    std::vector<std::string> forth_files;
     int opt, c;
     int idx;
 
@@ -372,11 +373,15 @@ int main(int argc, char **argv)
 
     if (optind < argc) {
         while (optind < argc) {
-            if (!(ext::file_pile[optind++] = fopen (argv[optind-1],"r"))) {
+            if (!(ext::file_pile[optind++] = fopen(argv[optind-1],"r"))) {
                 char buffer[200];
                 sprintf(buffer,"can't open file: %s",argv[optind-1]);
                 perror (buffer);
                 return 1;
+            }
+            else {
+                fclose(ext::file_pile[optind-1]);
+                forth_files.push_back(argv[optind-1]);
             }
         }
     }
@@ -385,10 +390,21 @@ int main(int argc, char **argv)
         return 1;
     }
 
-exit(1);
+    // !! todo
+    std::string input_file ;
+    std::string reput_file ;
 
-    FILE *fr = fopen(argv[1],"r"); if (!fr) return yyerror("can not open input file!");
-    FILE *fw = fopen(argv[2],"w"); if (!fw) return yyerror("can not open write file!");
+    if (forth_files.size() > 0)
+    input_file = forth_files[0];  else
+    input_file = std::string("stdin");
+
+    reput_file = input_file;
+
+    if (ext::convert_mode == ext::CVT_PASCAL) reput_file.append(".pas"); else
+    if (ext::convert_mode == ext::CVT_ASM   ) reput_file.append(".asm");
+
+    FILE *fr = fopen(input_file.c_str(),"r"); if (!fr) return yyerror("can not open input file!");
+    FILE *fw = fopen(reput_file.c_str(),"w"); if (!fw) return yyerror("can not open write file!");
 
     fseek(fr, 0, SEEK_END); ext::yyget_line_gap = ftell(fr);
     fseek(fr, 0, SEEK_SET);
