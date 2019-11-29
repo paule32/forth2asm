@@ -18,10 +18,17 @@ c -----------------------------------------------------------------------------
 * again as before
 
 program HelloWorld
+    Integer a,b , c,c, cc
+
+    a = 42
+    b = 21
+    c = a
+
+    goto 10
 10
-
+    goto    20
 20
-
+    goto  30
 30
 
 end

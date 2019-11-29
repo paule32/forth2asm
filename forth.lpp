@@ -27,6 +27,8 @@
 #include <strings.h>
 #include <ctype.h>
 #include <limits.h>
+#include <unistd.h>
+#include <getopt.h>
 #include <sys/types.h>
 
 #include "common.h"
@@ -44,15 +46,8 @@ extern int yyerror(const char*);
 #include "forth.tab.hpp"
 #undef yywrap
 
-size_t strlen(const char * _str)
-{
-    size_t i = 0;
-    while(_str[i++]);
-    return i;
-}
-
 int yyerror(const char *p) {
-    fprintf(stderr,"error:%d:%s\n",yyget_lineno(),p);
+    std::cerr << "error:" << yyget_lineno() << ":" << p << std::endl;
     return yyget_lineno();
 }
 
@@ -77,7 +72,10 @@ dimsid2     {ws}*","{ws}*
 dimsidA     {dimsid0}{dimsid1}")"
 dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 
-%x subser subser_parameter dimens
+listsep     (({dimsid1})([,]{dimsid1})*)
+
+%x subser subser_parameter dimens ident_or_num integers reals doubles complexes
+%x precisions characters logicals complexs
 %%
 
 ^\!.*\n     { std::cout << ext::yypadding(yytext); }
@@ -85,6 +83,47 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 ^[c|C].*\n  { std::cout << ext::yypadding(yytext); }
 
 {ws}*       { }
+{ident}{ws}*"\="{ws}* {
+    //std::cout << "1: " << yytext << std::endl;
+    BEGIN(ident_or_num);
+}
+
+<ident_or_num>{ident} {
+    //std::cout << "3: " << yytext << std::endl;
+    ext::forth_namespace ns;
+    bool found = false;
+    int  index = 0;
+
+    ns = ext::forth_memory.back();
+    for (auto &pa: ns.id_parameter) { pa.id_index = index++; }
+    for (auto &pa: ns.id_parameter) {
+        if (strstr(pa.id.c_str(),yytext)) {
+            found = true;
+        }
+        ++index;
+    }
+    if (found == false) {
+        char buffer[200];
+        sprintf(buffer,"parameter/variable: '%s' not found.",yytext);
+        yyerror(buffer);
+        exit(1);
+    }
+
+    std::cout <<
+    "\tmov\teax, dword ptr [ebp + " << (ext::tmp_parameter * sizeof(uint32_t)) <<  // 1. var im head
+    "]" << std::endl <<
+    "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter * sizeof(uint32_t)) <<  // 1. var im block
+    "], eax" << std::endl << ";" << std::endl;
+    BEGIN(INITIAL);
+}
+<ident_or_num>{num} {
+//    std::cout << "2: " << yytext << std::endl;
+    std::cout <<
+    "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter++ * sizeof(uint32_t)) <<
+    "], " << yytext << std::endl << ";" << std::endl;
+    BEGIN(INITIAL);
+}
+
 {gotoline}  {
     std::stringstream ss;
     ss  << std::string("L")
@@ -93,23 +132,64 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
     std::cout << ss.str();
 }
 
-([g|G][o|O][t|T][o|O]){num} {
+([l|L][o|O][g|G][i|I][c|C][a|A][l|L])      { BEGIN(logicals);   }
+([i|I][n|N][t|T][e|E][g|G][e|E][r|R])      { BEGIN(integers);   }
+([r|R][e|E][a|A][l|L])                     { BEGIN(reals);      }
+([d|D][o|O][u|U][b|B][l|L][e|E])           { BEGIN(doubles);    }
+([c|C][o|O][m|M][p|P][l|L][e|E][x|X])      { BEGIN(complexs);   }
+([c|C][a|A][r|R][a|A][c|C][t|T][e|E][r|R]) { BEGIN(characters); }
+
+<logicals>{listsep} {
     std::cout << std::string(yytext);
+    BEGIN(INITIAL);
+}
+<integers>{listsep} {
+    std::cout << std::string(yytext);
+    BEGIN(INITIAL);
+}
+<integers>\n ++yylineno;
+
+<reals>{listsep} {
+    std::cout << std::string(yytext);
+    BEGIN(INITIAL);
+}
+<doubles>{ws}*([p|P][r|E][c|C][i|I][s|S][i|I][o|O][n|N]){ws}* {
+    std::cout << std::string(yytext);
+    BEGIN(precisions);
+}
+<precisions>{listsep} {
+    std::cout << std::string(yytext);
+    BEGIN(INITIAL);
+}
+<characters>{listsep} {
+    std::cout << std::string(yytext);
+    BEGIN(INITIAL);
+}
+
+([g|G][o|O][t|T][o|O]){ws}*({num}) {
+    std::string st = std::string(yytext);
+    ext::removeCharsFromString(st,(char*)"goto ");
+    std::cout <<
+    std::string("\tjmp\tL") <<
+    std::string(st)         <<
+    std::string("\n");
+
     BEGIN(INITIAL);
 }
 
 ([p|P][r|R][o|O][g|G][r|R][a|A][m|M]){ws}*{ident} {
     std::string st = std::string(yytext);
-    st.erase(0,strlen("program"));
+    st.erase(0,ext::strlen("program"));
 
     std::cout << ext::yypadding(yytext);
 
     std::cout
-    << "\nBITS 32\n"
-    << "main:\n"
-    << "\tpush\tebp\n"
-    << "\tmov\tebp, esp\n"
-    << "\tsub\tesp, 16\n";
+    << "\nBITS 32"          << std::endl
+    << "main:"              << std::endl
+    << "\tpush\tebp"        << std::endl
+    << "\tmov\tebp, esp"    << std::endl
+    << "\tsub\tesp, 16"     << std::endl
+    << ";"                  << std::endl;
 
     BEGIN(INITIAL);
 }
@@ -118,7 +198,7 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 }
 
 ([s|S][u|U][b|B][r|R][o|O][u|U][t|T][i|I][n|N][e|E]) {      // subroutine
-    ext::current_flag = ext::ForthFlags::FLAG_SUROUTINE;
+    ext::current_flag = ext::ForthFlags::FLAG_SUBROUTINE;
     BEGIN(subser);
 }
 
@@ -133,6 +213,21 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 
 <subser>{ws}*   { }
 <subser>{ident} {
+    // exists?
+    bool found = false;
+    for (auto &id : ext::forth_memory) {
+        if (strstr(id.id.c_str(),yytext)) {
+            found = true;
+            break;
+        }
+    }
+    if (found == false) {
+        ext::forth_namespace ns;
+        ns.id = std::string(yytext);
+        ns.id_type = ext::ForthFlags::FLAG_SUBROUTINE;
+        ext::forth_memory.push_back(ns);
+    }
+
     std::stringstream ss;
     ss  << std::string("subroutine: ")
         << std::string(yytext)
@@ -140,7 +235,6 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 
     std::cout << ext::yypadding(ss.str());
     std::cout << std::string(yytext) << ":" << std::endl;
-    ext::forth_memory.push_back(std::string(yytext));
 
     std::cout << "\tpush\tebp"     << std::endl;
     std::cout << "\tmov\tebp, esp" << std::endl;
@@ -155,6 +249,33 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 
     std::vector<std::string> parameter;
     parameter = ext::split(st,',');
+
+    ext::forth_namespace ns, ts;
+    ns = ext::forth_memory.back();
+
+    int plen = parameter.size() - 1;
+    int ilen = ns.id_parameter.size();
+
+    if (plen > 0) {
+        for (int j = 0; j < plen; ++j) {
+            if (ilen < 1) {
+                ts.id = parameter[j];
+                ts.id_type = ext::ForthFlags::FLAG_PARAMETER;
+                ns.id_parameter.push_back(ts);
+            }
+            else if (strstr(ns.id_parameter[j].id.c_str(),parameter[j].c_str())) {
+                // exists ...
+                printf("121212\n");
+            }
+/*          else {
+                ts.id = yytext;
+                ts.id_type = ext::ForthFlags::FLAG_PARAMETER;
+                ns.id_parameter.push_back(ts);
+            }*/
+        }
+    }
+
+    ext::tmp_parameter = 1;
 
     std::cout << "\tsub\tesp, " << ((parameter.size() * sizeof(uint32_t)) + sizeof(uint32_t));
     std::cout << std::endl;
@@ -181,10 +302,90 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 //-- FUNCTION DEFINITIONS ---------------------------------
 int main(int argc, char **argv)
 {
-    if (argc < 3) {
-        fprintf(stderr,"usage: <inputfile> <outputfile>\n");
+    int opt, c;
+    int idx;
+
+    static const struct option long_options[] =
+    {
+        { "mode",    required_argument, 0, 400 },
+        { "verbose", no_argument,       0, 402 },
+        { "version", no_argument,       0, 404 },
+        { "help",    no_argument,       0, 408 },
+        { 0     ,    0          ,       0,  0  }
+    };
+
+    std::cerr << "forth2asm (c) 2019 Jens Kallup - non profit Software" << std::endl;
+    std::cerr << "all rights reserved."    << std::endl                 << std::endl;
+
+    if (argc < 2) {
+        std::cout << "no parameter given." << std::endl;
         return 1;
     }
+
+    while (1) {
+        opt = optind ? optind : 1;
+        idx = 0;
+        if ((c = getopt_long(argc, argv, "abc:d", long_options, &idx)) < 0) {
+            break;
+        }
+        switch (c) {
+        case 0:
+            printf("option %s", long_options[idx].name);
+            if (optarg)
+                printf(" with arg %s", optarg);
+            printf("\n");
+            break;
+
+        case 400:
+        {
+            std::string st = std::string(optarg);
+            if (strcmp(st.c_str(),"pascal")) { ext::convert_mode = ext::CVT_PASCAL; } else
+            if (strcmp(st.c_str(),"asm"   )) { ext::convert_mode = ext::CVT_ASM;    } else {
+                std::cout << "unknow converter mode" << std::endl;
+                return 1;
+            }
+            std::cout << "source file will be converted to: " << st << std::endl;
+        }
+        break;
+
+        case 402:
+            printf("option verbose\n");
+            break;
+
+        case 404:
+            printf("version: 0.0.1 alpha\n");
+            break;
+
+        case 408:
+            printf(
+            "Fortran Transpiller - options:\n"
+            " --mode     mode = asm, pascal\n");
+            break;
+
+        case '?':
+            break;
+
+        default:
+            printf("?? getopt returned character code 0%o ??\n", c);
+        }
+    }
+
+    if (optind < argc) {
+        while (optind < argc) {
+            if (!(ext::file_pile[optind++] = fopen (argv[optind-1],"r"))) {
+                char buffer[200];
+                sprintf(buffer,"can't open file: %s",argv[optind-1]);
+                perror (buffer);
+                return 1;
+            }
+        }
+    }
+    else {
+        std::cout << "no input file specified." << std::endl;
+        return 1;
+    }
+
+exit(1);
 
     FILE *fr = fopen(argv[1],"r"); if (!fr) return yyerror("can not open input file!");
     FILE *fw = fopen(argv[2],"w"); if (!fw) return yyerror("can not open write file!");
@@ -205,7 +406,7 @@ int main(int argc, char **argv)
     // for listing mode
     char buffer[] = "1234567890abcdefghijklmnopqrstuvwxyz";
     sprintf(buffer,"%d",ext::yyget_line_gap);
-    ext::yymet_line_gap = strlen(buffer);
+    ext::yymet_line_gap = ext::strlen(buffer);
 
     yyset_in (fr);
     yyset_out(fw);

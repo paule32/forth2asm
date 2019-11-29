@@ -1,3 +1,26 @@
+// --------------------------------------------------------------------------------
+// MIT License
+//
+// Copyright (c) 2018 Jens Kallup
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+// --------------------------------------------------------------------------------
 #ifndef COMMON_H
 #define COMMON_H
 #pragma once
@@ -9,6 +32,7 @@
 #include <sstream>      // std::stringstream
 #include <iomanip>      // std::setw
 #include <regex>
+#include <cstring>
 
 extern int  yyerror(const char*);
 extern int  yylex();
@@ -20,22 +44,31 @@ extern int  yyget_lineno();
 
 // my own namespace: non-standard !!
 namespace ext {
+    const int CVT_PASCAL = 1;
+    const int CVT_ASM    = 2;
+
+    enum ForthFlags {
+        FLAG_NULL = 0,      // empty
+        FLAG_SUBROUTINE,    // subroutine
+        FLAG_PARAMETER      // parameter
+    };
+
     struct forth_namespace {
-        ::std::string              id;
-        ::std::vector<std::string> id_parameter;
+        ::std::string                  id;
+        ::std::vector<forth_namespace> id_parameter;
+        int                            id_index;
+        ForthFlags                     id_type;
 
         forth_namespace() {}
         forth_namespace(::std::string s1) : id(s1) {}
     };
 
-    ::std::vector<forth_namespace> forth_memory;
-    int forth_memory_position = 0;
+    ::std::vector<forth_namespace>           forth_memory;
+    ::std::vector<forth_namespace>::iterator forth_memory_iterator;
+    int                                      forth_memory_position = 0;
 
-    enum ForthFlags {
-        FLAG_NULL = 0,      // empty
-        FLAG_SUROUTINE,     // subroutine
-        FLAG_PARAMETER      // parameter
-    };
+    FILE * file_pile[2048];
+    int convert_mode = 0;
 
     int current_id   = 0;
     int current_flag = ForthFlags::FLAG_NULL;
@@ -44,7 +77,7 @@ namespace ext {
     int yymet_line_gap = 0;
 
     int tmp_top_of_stack = 0;
-    int tmp_parameter    = 0;
+    int tmp_parameter    = 1;
 
     ::std::stringstream tmp_string_stream;
     ::std::string yypadding(::std::string c) {
@@ -55,6 +88,30 @@ namespace ext {
     << ": " << c;
     return ss.str();
     }
+
+    size_t strlen(const char * _str)
+    {
+        size_t i = 0;
+        while(_str[i++]);
+        return i;
+    }
+
+    ::std::string string2upper(::std::string s) {
+        char *p = (char*)s.c_str();
+        while (*p) {
+            *p = toupper(*p);
+            ++p;
+        }
+        return ::std::string(p);
+    }        
+    ::std::string string2lower(std::string s) {
+        char *p = (char*)s.c_str();
+        while (*p) {
+            *p = toupper(*p);
+            ++p;
+        }
+        return ::std::string(p);
+    }        
 
     void removeCharsFromString(::std::string &str, char* charsToRemove) {
         for (unsigned int i = 0; i < strlen(charsToRemove); ++i) {
