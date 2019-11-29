@@ -21,6 +21,12 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+//
+// # <mode>    = asm, pascal
+// # <srcfile> = Fortran source file
+//
+// # console input:
+// $ forth2asm --mode <mode> <srcfile>
 // --------------------------------------------------------------------------------
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,7 +81,7 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 listsep     (({dimsid1})([,]{dimsid1})*)
 
 %x subser subser_parameter dimens ident_or_num integers reals doubles complexes
-%x precisions characters logicals complexs
+%x precisions characters logicals complexs programs gotos
 %%
 
 ^\!.*\n     { yytext[ext::strlen(yytext)-2] = '\0'; std::cout << ext::yypadding(yytext) << std::endl; }
@@ -83,8 +89,17 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 ^[c|C].*\n  { yytext[ext::strlen(yytext)-2] = '\0'; std::cout << ext::yypadding(yytext) << std::endl; }
 
 {ws}*       { }
-{ident}{ws}*"\="{ws}* {
-    //std::cout << "1: " << yytext << std::endl;
+\n*         { ++yylineno; }
+({ident}){ws}*"\="{ws}* {
+    if (ext::current_flag == ext::ForthFlags::FLAG_NULL) {
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        std::string st = yytext;
+        ext::replaceStr(st,
+        std::string("="),
+        std::string(":="));
+        std::cout << st;
+    }   }
+    //std::cout << "1: " << ":" << yytext << std::endl;
     BEGIN(ident_or_num);
 }
 
@@ -94,57 +109,89 @@ listsep     (({dimsid1})([,]{dimsid1})*)
     bool found = false;
     int  index = 0;
 
-    ns = ext::forth_memory.back();
-    for (auto &pa: ns.id_parameter) { pa.id_index = index++; }
-    for (auto &pa: ns.id_parameter) {
-        if (strstr(pa.id.c_str(),yytext)) {
-            found = true;
+    // todo
+    if (ext::convert_mode == ext::CVT_ASM) {
+        ns = ext::forth_memory.back();
+        for (auto &pa: ns.id_parameter) { pa.id_index = index++; }
+        for (auto &pa: ns.id_parameter) {
+            if (strstr(pa.id.c_str(),yytext)) {
+                found = true;
+            }
+            ++index;
         }
-        ++index;
-    }
-    if (found == false) {
-        char buffer[200];
-        sprintf(buffer,"parameter/variable: '%s' not found.",yytext);
-        yyerror(buffer);
-        exit(1);
+        if (found == false) {
+            char buffer[200];
+            sprintf(buffer,"parameter/variable: '%s' not found.",yytext);
+            yyerror(buffer);
+            exit(1);
+        }
     }
 
-    std::cout <<
-    "\tmov\teax, dword ptr [ebp + " << (ext::tmp_parameter * sizeof(uint32_t)) <<  // 1. var im head
-    "]" << std::endl <<
-    "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter * sizeof(uint32_t)) <<  // 1. var im block
-    "], eax" << std::endl << ";" << std::endl;
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        std::cout << "\t" << yytext << ";";
+    }   else
+    if (ext::convert_mode == ext::CVT_ASM) {
+        std::cout <<
+        "\tmov\teax, dword ptr [ebp + " << (ext::tmp_parameter * sizeof(uint32_t)) <<  // 1. var im head
+        "]" << std::endl <<
+        "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter * sizeof(uint32_t)) <<  // 1. var im block
+        "], eax" << std::endl << ";" << std::endl;
+    }
     BEGIN(INITIAL);
 }
 <ident_or_num>{num} {
 //    std::cout << "2: " << yytext << std::endl;
-    std::cout <<
-    "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter++ * sizeof(uint32_t)) <<
-    "], " << yytext << std::endl << ";" << std::endl;
+
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        std::cout << "\t" << yytext << ";" << std::endl;
+    }   else
+    if (ext::convert_mode == ext::CVT_ASM) {
+        std::cout <<
+        "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter++ * sizeof(uint32_t)) <<
+        "], " << yytext << std::endl << ";" << std::endl;
+    }
     BEGIN(INITIAL);
 }
 
 {gotoline}  {
     std::stringstream ss;
+
+    if (ext::convert_mode == ext::CVT_ASM) {
     ss  << std::string("L")
         << std::string(yytext)
         << std::string(":\n");
+    }   else
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+    ss  << std::string("Label")
+        << std::string(yytext)
+        << std::string(":\n");
+    }
     std::cout << ss.str();
 }
 
-([l|L][o|O][g|G][i|I][c|C][a|A][l|L])      { BEGIN(logicals);   }
-([i|I][n|N][t|T][e|E][g|G][e|E][r|R])      { BEGIN(integers);   }
-([r|R][e|E][a|A][l|L])                     { BEGIN(reals);      }
-([d|D][o|O][u|U][b|B][l|L][e|E])           { BEGIN(doubles);    }
-([c|C][o|O][m|M][p|P][l|L][e|E][x|X])      { BEGIN(complexs);   }
-([c|C][a|A][r|R][a|A][c|C][t|T][e|E][r|R]) { BEGIN(characters); }
+([l|L][o|O][g|G][i|I][c|C][a|A][l|L])                { BEGIN(logicals);   }
+([i|I][n|N][t|T][e|E][g|G][e|E][r|R])                { BEGIN(integers);   }
+([r|R][e|E][a|A][l|L])                               { BEGIN(reals);      }
+([d|D][o|O][u|U][b|B][l|L][e|E])                     { BEGIN(doubles);    }
+([c|C][o|O][m|M][p|P][l|L][e|E][x|X])                { BEGIN(complexs);   }
+([c|C][a|A][r|R][a|A][c|C][t|T][e|E][r|R])           { BEGIN(characters); }
+([d|D][i|I][m|M][e|E][n|n][s|S][i|I][o|O][n|N])      { BEGIN(dimens);     }
+([s|S][u|U][b|B][r|R][o|O][u|U][t|T][i|I][n|N][e|E]) { BEGIN(subser);     }
+([p|P][r|R][o|O][g|G][r|R][a|A][m|M])                { BEGIN(programs);   }
+([g|G][o|O][t|T][o|O])                               { BEGIN(gotos);      }
+
 
 <logicals>{listsep} {
     std::cout << std::string(yytext);
     BEGIN(INITIAL);
 }
 <integers>{listsep} {
-    std::cout << std::string(yytext);
+    std::string st = std::string(yytext);
+    ext::removeCharsFromString(st,(char*)"\n\t");
+
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        std::cout << "var " << st << ";" << std::endl;
+    }
     BEGIN(INITIAL);
 }
 <integers>\n ++yylineno;
@@ -166,44 +213,55 @@ listsep     (({dimsid1})([,]{dimsid1})*)
     BEGIN(INITIAL);
 }
 
-([g|G][o|O][t|T][o|O]){ws}*({num}) {
+<gotos>{ws}*({num}) {
     std::string st = std::string(yytext);
     ext::removeCharsFromString(st,(char*)"goto ");
-    std::cout <<
-    std::string("\tjmp\tL") <<
-    std::string(st)         <<
-    std::string("\n");
+
+    if (ext::convert_mode == ext::CVT_ASM) {
+        std::cout <<
+        std::string("\tjmp\tL") <<
+        std::string(st)         <<
+        std::string("\n");
+    }   else
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        std::cout << "\n\tgoto Label" << st << ";" <<
+        std::endl;
+    }
 
     BEGIN(INITIAL);
 }
 
-([p|P][r|R][o|O][g|G][r|R][a|A][m|M]){ws}*{ident} {
+<programs>{ws}*{ident} {
     std::string st = std::string(yytext);
-    st.erase(0,ext::strlen("program"));
 
     std::cout << ext::yypadding(yytext);
+    ext::current_flag == ext::ForthFlags::FLAG_PROGRAM;
 
-    std::cout
-    << "\nBITS 32"          << std::endl
-    << "main:"              << std::endl
-    << "\tpush\tebp"        << std::endl
-    << "\tmov\tebp, esp"    << std::endl
-    << "\tsub\tesp, 16"     << std::endl
-    << ";"                  << std::endl;
-
+    if (ext::convert_mode == ext::CVT_ASM) {
+        std::cout
+        << "\nBITS 32"          << std::endl
+        << "main:"              << std::endl
+        << "\tpush\tebp"        << std::endl
+        << "\tmov\tebp, esp"    << std::endl
+        << "\tsub\tesp, 16"     << std::endl
+        << ";"                  << std::endl;
+    }   else
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        std::cout                  << std::endl
+        << "program " << st << ";\n";
+    }
     BEGIN(INITIAL);
 }
 ([e|E][n|N][d|D]) {
-    std::cout << std::string("\tleave\n\tret\n\n");
-}
-
-([s|S][u|U][b|B][r|R][o|O][u|U][t|T][i|I][n|N][e|E]) {      // subroutine
-    ext::current_flag = ext::ForthFlags::FLAG_SUBROUTINE;
-    BEGIN(subser);
-}
-
-[d|D][i|I][m|M][e|E][n|n][s|S][i|I][o|O][n|N] {             // dimension
-    BEGIN(dimens);
+    if (ext::convert_mode == ext::CVT_ASM) {
+        std::cout << "\tleave\n\tret\n\n";
+    }   else
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+    if (ext::current_flag == ext::ForthFlags::FLAG_PROGRAM)
+        std::cout << "end."; else
+        std::cout << "end;";
+        std::cout <<  std::endl;
+    }
 }
 
 <dimens>(({dimsidA}|{dimsidB})|(({dimsidA}|{dimsidB}){ws}*","{ws}*({dimsidA}|{dimsidB}))) {
@@ -230,14 +288,19 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 
     std::stringstream ss;
     ss  << std::string("subroutine: ")
-        << std::string(yytext)
-        << std::endl;
-
+        << std::string(yytext);
     std::cout << ext::yypadding(ss.str());
-    std::cout << std::string(yytext) << ":" << std::endl;
 
-    std::cout << "\tpush\tebp"     << std::endl;
-    std::cout << "\tmov\tebp, esp" << std::endl;
+    if (ext::convert_mode == ext::CVT_ASM) {
+        std::cout << std::string(yytext) << ":" << std::endl;
+
+        std::cout << "\tpush\tebp"     << std::endl;
+        std::cout << "\tmov\tebp, esp" << std::endl;
+    }   else
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        std::cout <<
+        std::endl << "procedure " << yytext;
+    }
 
     BEGIN(subser_parameter);
 }
@@ -275,15 +338,31 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         }
     }
 
-    ext::tmp_parameter = 1;
+    if (ext::convert_mode == ext::CVT_ASM) {
+        ext::tmp_parameter = 1;
 
-    std::cout << "\tsub\tesp, " << ((parameter.size() * sizeof(uint32_t)) + sizeof(uint32_t));
-    std::cout << std::endl;
+        std::cout << "\tsub\tesp, " << ((parameter.size() * sizeof(uint32_t)) + sizeof(uint32_t));
+        std::cout << std::endl;
 
-    for (auto &pav: parameter) {
-        ext::tmp_parameter += 1;
-        ext::tmp_string_stream << "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter * sizeof(uint32_t));
-        ext::tmp_string_stream << "], " << pav << "\n";
+        for (auto &pav: parameter) {
+            ext::tmp_parameter += 1;
+            ext::tmp_string_stream << "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter * sizeof(uint32_t));
+            ext::tmp_string_stream << "], " << pav << "\n";
+        }
+    }   else
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        ext::tmp_string_stream.clear();
+        if (parameter.size() < 1)
+        std::cout << ";"; else
+        std::cout << "(";
+        int plen = parameter.size();
+        for (int i = 0; i < plen; ++i) {
+            ext::tmp_string_stream << parameter[i];
+            if (i < plen)    {
+            if (i == plen-1) {
+            ext::tmp_string_stream << ");" << std::endl; break; }
+            ext::tmp_string_stream << ","; }
+        }
     }
 
     std::cout << ext::tmp_string_stream.str();

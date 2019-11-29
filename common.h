@@ -51,7 +51,8 @@ namespace ext {
     enum ForthFlags {
         FLAG_NULL = 0,      // empty
         FLAG_SUBROUTINE,    // subroutine
-        FLAG_PARAMETER      // parameter
+        FLAG_PARAMETER,     // parameter
+        FLAG_PROGRAM        // program
     };
 
     struct forth_namespace {
@@ -125,6 +126,21 @@ namespace ext {
         for (unsigned int i = 0; i < strlen(charsToRemove); ++i) {
             str.erase(remove(str.begin(),str.end(),charsToRemove[i]),str.end());
         }
+    }
+
+    void replaceStr(::std::string &data, ::std::string toSearch, ::std::string replaceStr)
+    {
+	    // Get the first occurrence
+	    size_t pos = data.find(toSearch);
+     
+	    // Repeat till end is reached
+	    while( pos != std::string::npos)
+	    {
+		    // Replace this occurrence of Sub String
+		    data.replace(pos, toSearch.size(), replaceStr);
+		    // Get the next occurrence from the current position
+		    pos = data.find(toSearch, pos + replaceStr.size());
+	    }
     }
 
     ::std::vector<::std::string> split(const ::std::string& s, char delimiter)
