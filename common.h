@@ -44,8 +44,9 @@ extern int  yyget_lineno();
 
 // my own namespace: non-standard !!
 namespace ext {
-    const int CVT_PASCAL = 1;
+    const int CVT_NONE   = 0;
     const int CVT_ASM    = 2;
+    const int CVT_PASCAL = 1;   // default ?
 
     enum ForthFlags {
         FLAG_NULL = 0,      // empty
@@ -68,7 +69,7 @@ namespace ext {
     int                                      forth_memory_position = 0;
 
     FILE * file_pile[2048];
-    int convert_mode = 0;
+    int convert_mode = CVT_PASCAL;
 
     int current_id   = 0;
     int current_flag = ForthFlags::FLAG_NULL;
@@ -81,16 +82,23 @@ namespace ext {
 
     ::std::stringstream tmp_string_stream;
     ::std::string yypadding(::std::string c) {
-    ::std::stringstream ss; ss
-    << ";"
-    << ::std::setw(yymet_line_gap)
-    <<      ::yyget_lineno()
-    << ": " << c;
-    return ss.str();
+    ::std::stringstream ss;
+         if (convert_mode == CVT_ASM)    { ss
+         << ";"
+         << ::std::setw(yymet_line_gap)
+         <<      ::yyget_lineno()
+         << ": " << c; } else
+         if (convert_mode == CVT_PASCAL) { ss
+         << "(* "
+         << ::std::setw(yymet_line_gap)
+         <<      ::yyget_lineno()
+         << ": " << c
+         << "*)" ;
+         }
+         return ss.str();
     }
 
-    size_t strlen(const char * _str)
-    {
+    size_t strlen(const char * _str) {
         size_t i = 0;
         while(_str[i++]);
         return i;

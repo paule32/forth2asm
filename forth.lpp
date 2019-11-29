@@ -78,9 +78,9 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 %x precisions characters logicals complexs
 %%
 
-^\!.*\n     { std::cout << ext::yypadding(yytext); }
-^\*.*\n     { std::cout << ext::yypadding(yytext); }
-^[c|C].*\n  { std::cout << ext::yypadding(yytext); }
+^\!.*\n     { yytext[ext::strlen(yytext)-2] = '\0'; std::cout << ext::yypadding(yytext) << std::endl; }
+^\*.*\n     { yytext[ext::strlen(yytext)-2] = '\0'; std::cout << ext::yypadding(yytext) << std::endl; }
+^[c|C].*\n  { yytext[ext::strlen(yytext)-2] = '\0'; std::cout << ext::yypadding(yytext) << std::endl; }
 
 {ws}*       { }
 {ident}{ws}*"\="{ws}* {
@@ -339,13 +339,31 @@ int main(int argc, char **argv)
 
         case 400:
         {
-            std::string st = std::string(optarg);
-            if (strcmp(st.c_str(),"pascal")) { ext::convert_mode = ext::CVT_PASCAL; } else
-            if (strcmp(st.c_str(),"asm"   )) { ext::convert_mode = ext::CVT_ASM;    } else {
-                std::cout << "unknow converter mode" << std::endl;
-                return 1;
+            if (ext::strlen(optarg) == 7) {
+                if (optarg[0] == 'p'
+                &&  optarg[1] == 'a'
+                &&  optarg[2] == 's'
+                &&  optarg[3] == 'c'
+                &&  optarg[4] == 'a'
+                &&  optarg[5] == 'l') {
+                ext::convert_mode = ext::CVT_PASCAL;
+                } else {
+                  std::cout << "unknow converter mode" << std::endl;
+                  return 1;
+            }   } else
+            if (ext::strlen(optarg) == 4) {
+                if (optarg[0] == 'a'
+                &&  optarg[1] == 's'
+                &&  optarg[2] == 'm') {
+                ext::convert_mode = ext::CVT_ASM;
+                } else {
+                  std::cout << "unknow converter mode" << std::endl;
+                  return 1;
+            }   } else {
+                  std::cout << "unknow converter mode" << std::endl;
+                  return 1;
             }
-            std::cout << "source file will be converted to: " << st << std::endl;
+            std::cout << "source file will be converted to: " << optarg << std::endl;
         }
         break;
 
