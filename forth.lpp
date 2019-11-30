@@ -21,12 +21,6 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
-//
-// # <mode>    = asm, pascal
-// # <srcfile> = Fortran source file
-//
-// # console input:
-// $ forth2asm --mode <mode> <srcfile>
 // --------------------------------------------------------------------------------
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,7 +106,7 @@ listsep     (({dimsid1})([,]{dimsid1})*)
     // todo
     if (ext::convert_mode == ext::CVT_ASM) {
         ns = ext::forth_memory.back();
-        for (auto &pa: ns.id_parameter) { pa.id_index = index++; }
+        //for (auto &pa: ns.id_parameter) { pa.id_index = index++; }
         for (auto &pa: ns.id_parameter) {
             if (strstr(pa.id.c_str(),yytext)) {
                 found = true;
@@ -187,11 +181,25 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 }
 <integers>{listsep} {
     std::string st = std::string(yytext);
-    ext::removeCharsFromString(st,(char*)"\n\t");
+    ext::removeCharsFromString(st,(char*)"\n\t ");
+    std::vector<std::string> vars;
+    ext::forth_variables     fvar;
 
+    vars = ext::split(st,',');
+    
     if (ext::convert_mode == ext::CVT_PASCAL) {
-        std::cout << "var " << st << ";" << std::endl;
+        for (int i = 0; i < vars.size(); ++i) {
+            // no duplicates !
+            // todo
+            {
+                fvar.id = vars[i];
+                fvar.id_type = ext::ForthFlags::FLAG_VARIABLE;
+                ext::forth_memory.back().id_variables.push_back(fvar);
+                continue;
+            }
+        }
     }
+
     BEGIN(INITIAL);
 }
 <integers>\n ++yylineno;
@@ -233,9 +241,15 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 
 <programs>{ws}*{ident} {
     std::string st = std::string(yytext);
-
     std::cout << ext::yypadding(yytext);
-    ext::current_flag == ext::ForthFlags::FLAG_PROGRAM;
+
+    // todo
+    ext::forth_namespace nsp;
+    ext::forth_programs  npr;
+
+    npr.id = std::string(yytext);
+    nsp.id = std::string(yytext);
+    nsp.id_type = ext::ForthFlags::FLAG_PROGRAM;
 
     if (ext::convert_mode == ext::CVT_ASM) {
         std::cout
@@ -247,9 +261,13 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         << ";"                  << std::endl;
     }   else
     if (ext::convert_mode == ext::CVT_PASCAL) {
-        std::cout                  << std::endl
-        << "program " << st << ";\n";
+        npr.id_stream << "program " << st << ";" << std::endl;
     }
+
+    nsp.id_programs.push_back(npr);
+    ext::forth_memory.push_back(nsp);
+    ext::forth_procedure = nsp.id;
+
     BEGIN(INITIAL);
 }
 ([e|E][n|N][d|D]) {
@@ -280,10 +298,12 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         }
     }
     if (found == false) {
-        ext::forth_namespace ns;
-        ns.id = std::string(yytext);
-        ns.id_type = ext::ForthFlags::FLAG_SUBROUTINE;
-        ext::forth_memory.push_back(ns);
+        ext::forth_namespace nsp = ext::forth_memory.back();
+        ext::forth_variables vas;
+
+        vas.id = std::string(yytext);
+        vas.id_type = ext::ForthFlags::FLAG_SUBROUTINE;
+        nsp.id_variables.push_back(vas);
     }
 
     std::stringstream ss;
@@ -529,7 +549,36 @@ int main(int argc, char **argv)
     init_forth.id = std::string("root");
     ext::forth_memory.push_back(init_forth );
 
+    // parse/lex code ...
     int result = yyparse();
+
+    // write code ...
+    ext::forth_programs prgs;
+    for (auto &prg: ext::forth_memory) {
+        if (strstr(prg.id.c_str(),"root"))
+        continue;
+
+        std::cout << "(* ======== PROGRAM's ======== *)" << std::endl;
+        std::cout << "program";
+        std::cout << prg.id    << ";"
+                  << std::endl ;
+
+        if (prg.id_variables.size() > 0) {
+            std::cout << "(* -------- VARIABLES -------- *)" << std::endl;
+            std::cout << "var"   << std::endl;
+
+            int plen = prg.id_variables.size();
+            for (int i = 0; i < plen; ++i) {
+                std::cout << prg.id_variables[i].id;
+                if (i < plen-1)
+                std::cout << ",";
+            }   std::cout << ": Integer;" << std::endl;
+        }
+
+        std::cout << "begin" << std::endl;
+        std::cout << "end."  << std::endl << std::endl;
+    }
+    std::cout << "(* ======== EOF ============== *)" << std::endl;
 
     std::cout << "compiled lines: " << _lineno << std::endl;
     std::cout << "done." <<

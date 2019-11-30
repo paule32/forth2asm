@@ -18,6 +18,9 @@ c -----------------------------------------------------------------------------
 * again as before
 
 program HelloWorld
+end
+
+program Test2
     Integer a,b , c,c, cc
 
     a = 42
