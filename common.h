@@ -52,22 +52,77 @@ namespace ext {
         FLAG_NULL = 0,      // empty
         FLAG_SUBROUTINE,    // subroutine
         FLAG_PARAMETER,     // parameter
-        FLAG_PROGRAM        // program
+        FLAG_PROGRAM,       // program
+        FLAG_VARIABLE       // variable
     };
 
+    struct forth_labels {
+        ::std::string       id;
+        ::std::stringstream id_stream;
+
+        forth_labels() { }
+        forth_labels(const forth_labels &o) {
+            id = o.id;
+            id_stream.clear();
+            id_stream << o.id_stream.str();
+        }
+        forth_labels & operator=(const forth_labels &o) {
+            id = o.id;
+            id_stream.clear();
+            id_stream << o.id_stream.str();
+        }
+    };
+    struct forth_programs  {
+        ::std::string       id;
+        ::std::stringstream id_stream;
+
+        forth_programs() { }
+        forth_programs(const forth_programs &o) {
+            id = o.id;
+            id_stream.clear();
+            id_stream << o.id_stream.str();
+        }
+        forth_programs & operator=(const forth_programs &o) {
+            id = o.id;
+            id_stream.clear();
+            id_stream << o.id_stream.str();
+        }
+    };
+    struct forth_variables {
+        ::std::string id;
+        int           id_type = 0;
+
+        forth_variables() {}
+        forth_variables(const forth_variables &o) {
+            id      = o.id;
+            id_type = o.id_type;
+        }
+        forth_variables & operator=(const forth_variables &o) {
+            id      = o.id;
+            id_type = o.id_type; return
+            *this;  
+        }
+    };
     struct forth_namespace {
         ::std::string                  id;
         ::std::vector<forth_namespace> id_parameter;
-        int                            id_index;
-        ForthFlags                     id_type;
+        ::std::vector<forth_variables> id_variables;
+        ::std::vector<forth_programs>  id_programs;
+        ::std::vector<forth_labels>    id_labels;
+        int                            id_index = 0;
+        ForthFlags                     id_type  = ForthFlags::FLAG_NULL;
 
         forth_namespace() {}
         forth_namespace(::std::string s1) : id(s1) {}
+
+        forth_namespace(            const forth_namespace &o) { id = o.id; }
+        forth_namespace & operator=(const forth_namespace &o) { id = o.id; }
     };
 
     ::std::vector<forth_namespace>           forth_memory;
     ::std::vector<forth_namespace>::iterator forth_memory_iterator;
-    int                                      forth_memory_position = 0;
+    ::std::string forth_procedure;
+    int           forth_memory_position = 0;
 
     FILE * file_pile[2048];
     int convert_mode = CVT_PASCAL;
