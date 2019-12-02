@@ -53,12 +53,6 @@ int yyerror(const char *p) {
 
 int yywrap() { return 1; }
 
-void add_variable(std::string ps) {
-    ext::forth_variables var;
-    var.id = std::string(ps);
-    ext::forth_memory.back().id_programs.back().id_variables.push_back(var);
-}
-
 void check_structs(void)
 {
 #if 0
@@ -103,6 +97,7 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 {ws}*       { }
 \n*         { ++yylineno; }
 ({ident}){ws}*"\="{ws}* {
+#if 0
     if (ext::current_flag == ext::ForthFlags::FLAG_NULL) {
     if (ext::convert_mode == ext::CVT_PASCAL) {
         std::string st = yytext;
@@ -112,10 +107,12 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         std::cout << st;
     }   }
     //std::cout << "1: " << ":" << yytext << std::endl;
+#endif
     BEGIN(ident_or_num);
 }
 
 <ident_or_num>{ident} {
+#if 0
     //std::cout << "3: " << yytext << std::endl;
     ext::forth_namespace ns;
     bool found = false;
@@ -149,9 +146,11 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter * sizeof(uint32_t)) <<  // 1. var im block
         "], eax" << std::endl << ";" << std::endl;
     }
+#endif
     BEGIN(INITIAL);
 }
 <ident_or_num>{num} {
+#if 0
 //    std::cout << "2: " << yytext << std::endl;
 
     if (ext::convert_mode == ext::CVT_PASCAL) {
@@ -162,10 +161,12 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter++ * sizeof(uint32_t)) <<
         "], " << yytext << std::endl << ";" << std::endl;
     }
+#endif
     BEGIN(INITIAL);
 }
 
 {gotoline}  {
+#if 0
     std::string st =
     std::string(yytext);
     ext::removeCharsFromString(st,(char*)"\n\t");
@@ -190,6 +191,8 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         s2 << std::string(st);
         ext::forth_paslbl.push_back(s2.str());
     }
+#endif
+    BEGIN(INITIAL);
 }
 
 ([l|L][o|O][g|G][i|I][c|C][a|A][l|L])                { BEGIN(logicals);   }
@@ -205,10 +208,13 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 
 
 <logicals>{listsep} {
+#if 0
     std::cout << std::string(yytext);
+#endif
     BEGIN(INITIAL);
 }
 <integers>{listsep} {
+#if 0
     std::string st = std::string(yytext);
     ext::removeCharsFromString(st,(char*)"\n\t ");
 
@@ -222,28 +228,38 @@ listsep     (({dimsid1})([,]{dimsid1})*)
     }
     
 std::cout << "oo-->> " << ext::forth_memory.back().id_programs.back().id_variables.size() << " <<" << std::endl;
+#endif
     BEGIN(INITIAL);
 }
 <integers>\n ++yylineno;
 
 <reals>{listsep} {
+#if 0
     std::cout << std::string(yytext);
+#endif
     BEGIN(INITIAL);
 }
 <doubles>{ws}*([p|P][r|E][c|C][i|I][s|S][i|I][o|O][n|N]){ws}* {
+#if 0
     std::cout << std::string(yytext);
+#endif
     BEGIN(precisions);
 }
 <precisions>{listsep} {
+#if 0
     std::cout << std::string(yytext);
+#endif
     BEGIN(INITIAL);
 }
 <characters>{listsep} {
+#if 0
     std::cout << std::string(yytext);
+#endif
     BEGIN(INITIAL);
 }
 
 <gotos>{ws}*({num}) {
+#if 0
     std::string st = std::string(yytext);
     ext::removeCharsFromString(st,(char*)"goto ");
 
@@ -259,14 +275,20 @@ std::cout << "oo-->> " << ext::forth_memory.back().id_programs.back().id_variabl
         ext::forth_pascal.push_back(ss.str());
 
     }
-
+#endif
     BEGIN(INITIAL);
 }
 
 <programs>{ws}*{ident} {
     std::string st = std::string(yytext);
     ext::current_flag = ext::ForthFlags::FLAG_PROGRAM;
+    ext::removeCharsFromString(st,(char*)"\n\r\t ");
+    ext::forth_programs_t prg;
 
+    prg.id = st;
+    ext::forth_current_data.add(prg);
+
+#if 0
     if (ext::convert_mode == ext::CVT_ASM) {
         std::cout
         << "\nBITS 32"          << std::endl
@@ -294,25 +316,31 @@ std::cout << "oo-->> " << ext::forth_memory.back().id_programs.back().id_variabl
 
 std::cout << "===> " << ext::forth_memory.size() << std::endl;
     }
-
+#endif
     BEGIN(INITIAL);
 }
 ([e|E][n|N][d|D]) {
+#if 0
     if (ext::convert_mode == ext::CVT_ASM) {
         std::cout << "\tleave\n\tret\n\n";
     }   else
     if (ext::convert_mode == ext::CVT_PASCAL) {
         ext::forth_pascal.push_back(std::string("@end_mark@"));
     }
+#endif
+    BEGIN(INITIAL);
 }
 
 <dimens>(({dimsidA}|{dimsidB})|(({dimsidA}|{dimsidB}){ws}*","{ws}*({dimsidA}|{dimsidB}))) {
+#if 0
     std::cout << std::string("\ndimensA: ") << std::string(yytext);
+#endif
     BEGIN(INITIAL);
 }
 
 <subser>{ws}*   { }
 <subser>{ident} {
+#if 0
     std::stringstream ss;
     ss  << std::string("subroutine: ")
         << std::string(yytext);
@@ -328,12 +356,13 @@ std::cout << "===> " << ext::forth_memory.size() << std::endl;
         std::cout <<
         std::endl << "procedure " << yytext;
     }
-
+#endif
     BEGIN(subser_parameter);
 }
 <subser>\n   { ++yylineno; }
 
 <subser_parameter>{ws}*"("(({ws}*)|({ws}*{ident}{ws}*)|({ws}*{ident}{ws}*","{ws}*{ident}{ws}*)|(({ws}*{ident}",")*{ws}*{ident}{ws}*))")" {
+#if 0
     std::string st = std::string(yytext);
     ext::removeCharsFromString(st,(char*)"() ");
 
@@ -393,6 +422,7 @@ std::cout << "===> " << ext::forth_memory.size() << std::endl;
     }
 
     std::cout << ext::tmp_string_stream.str();
+#endif
     BEGIN(INITIAL);
 }
 <subser_parameter>\n  { ++yylineno; }
@@ -552,50 +582,10 @@ int main(int argc, char **argv)
     yyset_out(fw);
     yyset_lineno(0);
 
-
-    // prepare variables ...
-    ext::forth_namespace nsp;
-    nsp.id = std::string("root");
-    ext::forth_memory.push_back(nsp);
-
     // parse/lex code ...
     int result = yyparse();
 
     // write code ...
-#if 0
-    int plen = ext::forth_memory.back().id_programs.size();
-    if (plen < 1) {
-        std::cout << "(* no code *)" << std::endl;
-        // todo !
-
-        __asm__("jmp MyGoToLabel_ErrorNo");
-    }
-#endif
-
-    std::vector<ext::forth_programs> progs = ext::forth_memory.back().id_programs;
-    for (auto &prg : progs) { //ext::forth_memory.back().id_programs) {
-        std::cout << "(* ======== PROGRAM's ======== *)" << std::endl;
-        std::cout << "program" << prg.id << ";" << std::endl;
-
-std::cout << "oo-->> " << ext::forth_memory.back().id_programs.back().id_variables.size() << " <<" << std::endl;
-//std::cout << "oooooooooooooo> " << prg.id_variables.size() << std::endl;
-
-/*
-        {   int plen = prg.id_variables.size();
-std::cout << ">>" << plen << " <<" << std::endl;
-
-            if (plen > 0) {
-                std::cout << "(* -------- VARIABLE's ------- *)" << std::endl;
-                std::cout << "var" << std::endl;
-
-                //for (auto &var : plen) {
-               // }
-            }
-        }
-*/
-        std::cout << "begin"   << std::endl;
-        std::cout << "end."    << std::endl;
-    }
 
 
 #if 0
@@ -657,5 +647,75 @@ std::cout << ">>" << plen << " <<" << std::endl;
 
     fclose(fw);
     return result;
+}
+
+
+std::string ext::yypadding(::std::string c) {
+std::stringstream ss;
+    if (ext::convert_mode == CVT_ASM)    { ss
+        << ";"
+        << std::setw(ext::yymet_line_gap)
+        <<      yyget_lineno()
+        << ": " << c;
+    } else
+    if (ext::convert_mode == CVT_PASCAL) { ss
+        << "(* "
+        << ::std::setw(yymet_line_gap)
+        <<      ::yyget_lineno()
+        << ": "
+        << c
+        << "*)" ;
+    }
+    return ss.str();
+}
+
+std::string ext::string2upper(std::string s) {
+    char *p = (char*)s.c_str();
+    while (*p) {
+        *p = toupper(*p);
+        ++p;
+    }
+    return std::string(p);
+}        
+
+std::string ext::string2lower(std::string s) {
+    char *p = (char*)s.c_str();
+    while (*p) {
+        *p = toupper(*p);
+        ++p;
+    }
+    return std::string(p);
+}        
+
+void ext::removeCharsFromString(std::string &str, char* charsToRemove) {
+    for (unsigned int i = 0; i < strlen(charsToRemove); ++i) {
+        str.erase(remove(str.begin(),str.end(),charsToRemove[i]),str.end());
+    }
+}
+
+void ext::replaceStr(std::string &data, std::string toSearch, std::string replaceStr)
+{
+    size_t pos = data.find(toSearch);
+    while( pos != std::string::npos) {
+	    data.replace(pos, toSearch.size(), replaceStr);
+	    pos = data.find(toSearch, pos + replaceStr.size());
+    }
+}
+
+std::vector<std::string> ext::split(const std::string& s, char delimiter)
+{
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream tokenStream(s);
+    while (std::getline(tokenStream, token, delimiter)) {
+       tokens.push_back(token);
+    }
+    return tokens;
+}
+
+size_t ext::strlen(const char * _str) {
+    size_t i = 0;
+    while(_str[i++]);
+    return i;
 }
 

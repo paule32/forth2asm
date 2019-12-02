@@ -34,6 +34,9 @@
 #include <regex>
 #include <cstring>
 
+#include "identity.h"
+#include "misc.h"
+
 extern int  yyerror(const char*);
 extern int  yylex();
 
@@ -48,7 +51,7 @@ namespace ext {
     const int CVT_ASM    = 2;
     const int CVT_PASCAL = 1;   // default ?
 
-    enum ForthFlags {
+    enum forth_flags {
         FLAG_NULL = 0,      // empty
         FLAG_SUBROUTINE,    // subroutine
         FLAG_PARAMETER,     // parameter
@@ -56,202 +59,25 @@ namespace ext {
         FLAG_VARIABLE       // variable
     };
 
-    struct forth_codes {
-        ::std::string       id;
-        ::std::stringstream id_stream;
+    std::vector<forth_data_t> forth_current_data;
 
-        forth_codes() { }
-        forth_codes(const forth_codes &o) {
-            id = o.id;
-            id_stream << o.id_stream.str();
-        }
-        forth_codes & operator=(const forth_codes &o) {
-            id = o.id;
-            id_stream << o.id_stream.str();
-            return *this;
-        }
-    };
-    struct forth_labels {
-        ::std::string       id;
-        ::std::stringstream id_stream;
-
-        forth_labels() { }
-        forth_labels(const forth_labels &o) {
-            id = o.id;
-            id_stream << o.id_stream.str();
-        }
-        forth_labels & operator=(const forth_labels &o) {
-            id = o.id;
-            id_stream << o.id_stream.str();
-            return *this;
-        }
-    };
-    struct forth_variables {
-        ::std::string       id;
-        ::std::stringstream id_stream;
-        int                 id_type = 0;
-
-        forth_variables() {}
-        forth_variables(const forth_variables &o) {
-            id      = o.id;
-            id_type = o.id_type;
-        }
-        forth_variables & operator=(const forth_variables &o) {
-            id      = o.id;
-            id_type = o.id_type; return
-            *this;  
-        }
-    };
-    struct forth_subroutins {
-        ::std::string       id;
-        ::std::stringstream id_stream;
-
-        ::std::vector<forth_variables>  id_variables;
-        ::std::vector<forth_labels>     id_labels;
-        ::std::vector<forth_codes>      id_codes;
-        ::std::vector<forth_subroutins> id_subs;
-
-        forth_subroutins() { }
-        forth_subroutins(const forth_subroutins &o) {
-            id = o.id;
-            id_stream << o.id_stream.str();
-        }
-        forth_subroutins & operator=(const forth_subroutins &o) {
-            id = o.id;
-            id_stream << o.id_stream.str();
-            return *this;
-        }
-    };
-    struct forth_programs  {
-        ::std::string                   id;
-        ::std::stringstream             id_stream;
-
-        ::std::vector<forth_variables>  id_variables;
-        ::std::vector<forth_labels>     id_labels;
-        ::std::vector<forth_codes>      id_codes;
-        ::std::vector<forth_subroutins> id_subs;
-
-        forth_programs() { }
-        forth_programs(const forth_programs &o) {
-            id = o.id;
-            id_stream << o.id_stream.str();
-        }
-        forth_programs & operator=(const forth_programs &o) {
-            id = o.id;
-            id_stream << o.id_stream.str();
-            return *this;
-        }
-    };
-    struct forth_namespace {
-        ::std::string                  id;
-        ::std::vector<forth_namespace> id_parameter;
-        ::std::vector<forth_programs>  id_programs;
-        int                            id_index = 0;
-        ForthFlags                     id_type  = ForthFlags::FLAG_NULL;
-
-        forth_namespace() {}
-        forth_namespace(::std::string s1) : id(s1) {}
-
-        forth_namespace(            const forth_namespace &o) { id = o.id; }
-        forth_namespace & operator=(const forth_namespace &o) { id = o.id; return *this; }
-    };
-
-    ::std::vector<forth_namespace>           forth_memory;
-    ::std::vector<forth_namespace>::iterator forth_memory_iterator;
-
-    ::std::vector<std::string> forth_pascal;
-    ::std::vector<std::string> forth_pasvar;
-    ::std::vector<std::string> forth_paslbl;
-
-    ::std::string forth_procedure;
-    int           forth_memory_position = 0;
-
-    FILE * file_pile[2048];
     int convert_mode = CVT_PASCAL;
-
-    int current_id   = 0;
     int current_flag = ForthFlags::FLAG_NULL;
-
+    
     int yyget_line_gap = 0;
     int yymet_line_gap = 0;
 
-    int tmp_top_of_stack = 0;
-    int tmp_parameter    = 1;
+    // keep it here, because yylex will double it !
+    extern size_t strlen(const char * _str);
 
-    ::std::stringstream tmp_string_stream;
-    ::std::string yypadding(::std::string c) {
-    ::std::stringstream ss;
-         if (convert_mode == CVT_ASM)    { ss
-         << ";"
-         << ::std::setw(yymet_line_gap)
-         <<      ::yyget_lineno()
-         << ": " << c; } else
-         if (convert_mode == CVT_PASCAL) { ss
-         << "(* "
-         << ::std::setw(yymet_line_gap)
-         <<      ::yyget_lineno()
-         << ": "
-         << c
-         << "*)" ;
-         }
-         return ss.str();
-    }
+    extern ::std::string yypadding(::std::string c);
+    extern ::std::string string2upper(::std::string s);
+    extern ::std::string string2lower(::std::string s);
 
-    size_t strlen(const char * _str) {
-        size_t i = 0;
-        while(_str[i++]);
-        return i;
-    }
+    extern ::std::vector<::std::string> split(const ::std::string& s, char delimiter);
 
-    ::std::string string2upper(::std::string s) {
-        char *p = (char*)s.c_str();
-        while (*p) {
-            *p = toupper(*p);
-            ++p;
-        }
-        return ::std::string(p);
-    }        
-    ::std::string string2lower(std::string s) {
-        char *p = (char*)s.c_str();
-        while (*p) {
-            *p = toupper(*p);
-            ++p;
-        }
-        return ::std::string(p);
-    }        
-
-    void removeCharsFromString(::std::string &str, char* charsToRemove) {
-        for (unsigned int i = 0; i < strlen(charsToRemove); ++i) {
-            str.erase(remove(str.begin(),str.end(),charsToRemove[i]),str.end());
-        }
-    }
-
-    void replaceStr(::std::string &data, ::std::string toSearch, ::std::string replaceStr)
-    {
-	    // Get the first occurrence
-	    size_t pos = data.find(toSearch);
-     
-	    // Repeat till end is reached
-	    while( pos != std::string::npos)
-	    {
-		    // Replace this occurrence of Sub String
-		    data.replace(pos, toSearch.size(), replaceStr);
-		    // Get the next occurrence from the current position
-		    pos = data.find(toSearch, pos + replaceStr.size());
-	    }
-    }
-
-    ::std::vector<::std::string> split(const ::std::string& s, char delimiter)
-    {
-        ::std::vector<::std::string> tokens;
-        ::std::string token;
-        ::std::istringstream tokenStream(s);
-        while (::std::getline(tokenStream, token, delimiter))
-        {
-           tokens.push_back(token);
-        }
-        return tokens;
-    }
+    extern void removeCharsFromString(::std::string &str, char* charsToRemove);
+    extern void replaceStr(::std::string &data, ::std::string toSearch, ::std::string replaceStr);
 }
 
 #endif
