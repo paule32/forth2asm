@@ -56,6 +56,21 @@ namespace ext {
         FLAG_VARIABLE       // variable
     };
 
+    struct forth_codes {
+        ::std::string       id;
+        ::std::stringstream id_stream;
+
+        forth_codes() { }
+        forth_codes(const forth_codes &o) {
+            id = o.id;
+            id_stream << o.id_stream.str();
+        }
+        forth_codes & operator=(const forth_codes &o) {
+            id = o.id;
+            id_stream << o.id_stream.str();
+            return *this;
+        }
+    };
     struct forth_labels {
         ::std::string       id;
         ::std::stringstream id_stream;
@@ -63,34 +78,18 @@ namespace ext {
         forth_labels() { }
         forth_labels(const forth_labels &o) {
             id = o.id;
-            id_stream.clear();
             id_stream << o.id_stream.str();
         }
         forth_labels & operator=(const forth_labels &o) {
             id = o.id;
-            id_stream.clear();
             id_stream << o.id_stream.str();
-        }
-    };
-    struct forth_programs  {
-        ::std::string       id;
-        ::std::stringstream id_stream;
-
-        forth_programs() { }
-        forth_programs(const forth_programs &o) {
-            id = o.id;
-            id_stream.clear();
-            id_stream << o.id_stream.str();
-        }
-        forth_programs & operator=(const forth_programs &o) {
-            id = o.id;
-            id_stream.clear();
-            id_stream << o.id_stream.str();
+            return *this;
         }
     };
     struct forth_variables {
-        ::std::string id;
-        int           id_type = 0;
+        ::std::string       id;
+        ::std::stringstream id_stream;
+        int                 id_type = 0;
 
         forth_variables() {}
         forth_variables(const forth_variables &o) {
@@ -103,12 +102,50 @@ namespace ext {
             *this;  
         }
     };
+    struct forth_subroutins {
+        ::std::string       id;
+        ::std::stringstream id_stream;
+
+        ::std::vector<forth_variables>  id_variables;
+        ::std::vector<forth_labels>     id_labels;
+        ::std::vector<forth_codes>      id_codes;
+        ::std::vector<forth_subroutins> id_subs;
+
+        forth_subroutins() { }
+        forth_subroutins(const forth_subroutins &o) {
+            id = o.id;
+            id_stream << o.id_stream.str();
+        }
+        forth_subroutins & operator=(const forth_subroutins &o) {
+            id = o.id;
+            id_stream << o.id_stream.str();
+            return *this;
+        }
+    };
+    struct forth_programs  {
+        ::std::string                   id;
+        ::std::stringstream             id_stream;
+
+        ::std::vector<forth_variables>  id_variables;
+        ::std::vector<forth_labels>     id_labels;
+        ::std::vector<forth_codes>      id_codes;
+        ::std::vector<forth_subroutins> id_subs;
+
+        forth_programs() { }
+        forth_programs(const forth_programs &o) {
+            id = o.id;
+            id_stream << o.id_stream.str();
+        }
+        forth_programs & operator=(const forth_programs &o) {
+            id = o.id;
+            id_stream << o.id_stream.str();
+            return *this;
+        }
+    };
     struct forth_namespace {
         ::std::string                  id;
         ::std::vector<forth_namespace> id_parameter;
-        ::std::vector<forth_variables> id_variables;
         ::std::vector<forth_programs>  id_programs;
-        ::std::vector<forth_labels>    id_labels;
         int                            id_index = 0;
         ForthFlags                     id_type  = ForthFlags::FLAG_NULL;
 
@@ -116,11 +153,16 @@ namespace ext {
         forth_namespace(::std::string s1) : id(s1) {}
 
         forth_namespace(            const forth_namespace &o) { id = o.id; }
-        forth_namespace & operator=(const forth_namespace &o) { id = o.id; }
+        forth_namespace & operator=(const forth_namespace &o) { id = o.id; return *this; }
     };
 
     ::std::vector<forth_namespace>           forth_memory;
     ::std::vector<forth_namespace>::iterator forth_memory_iterator;
+
+    ::std::vector<std::string> forth_pascal;
+    ::std::vector<std::string> forth_pasvar;
+    ::std::vector<std::string> forth_paslbl;
+
     ::std::string forth_procedure;
     int           forth_memory_position = 0;
 
@@ -148,7 +190,8 @@ namespace ext {
          << "(* "
          << ::std::setw(yymet_line_gap)
          <<      ::yyget_lineno()
-         << ": " << c
+         << ": "
+         << c
          << "*)" ;
          }
          return ss.str();

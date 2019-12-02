@@ -18,27 +18,35 @@ c -----------------------------------------------------------------------------
 * again as before
 
 program HelloWorld
-end
-
-program Test2
-    Integer a,b , c,c, cc
-
-    a = 42
-    b = 21
-    c = a
-
-    goto 10
-10
-    goto    20
-20
-    goto  30
-30
+integer sdss, cc, aa
 
 end
 
-subroutine nbr (ia, na, ad, ncon, nrr, nr, rc, rk, n, rmax, mc)
-
-    dimension ia(mc, nr), na()
-c, na(mc,nr), nq( )
-
+program test2
+cgoto 12
+c12
+c134
 end
+
+*program Test2
+*    Integer a,b , c,c, cc
+
+*    a = 42
+*    b = 21
+*    c = a
+
+*    goto 10
+*10
+*    goto    20
+*20
+*    goto  30
+*30
+
+*end
+
+*subroutine nbr (ia, na, ad, ncon, nrr, nr, rc, rk, n, rmax, mc)
+*
+*   dimension ia(mc, nr), na()
+*c, na(mc,nr), nq( )
+*
+*end
