@@ -17,32 +17,38 @@ c -----------------------------------------------------------------------------
 * this is a one-liner comment
 * again as before
 
-program HelloWorld
-integer sdss, cc, aa
+! this is a one liner comment , too
 
+program HelloWorld
+    integer sdss, cc, aa
+    real vv, aa
+
+    goto 30
+10
+30
 end
 
 program test2
-cgoto 12
-c12
-c134
+    goto 12
+12
+134
 end
 
-*program Test2
-*    Integer a,b , c,c, cc
+program Test2
+    Integer a,b , c,c, cc
 
-*    a = 42
-*    b = 21
-*    c = a
+    a = 42
+    b = 21
+    c = a
 
-*    goto 10
-*10
-*    goto    20
-*20
-*    goto  30
-*30
+    goto 10
+10
+    goto    20
+20
+    goto  30
+30
 
-*end
+end
 
 *subroutine nbr (ia, na, ad, ncon, nrr, nr, rc, rk, n, rmax, mc)
 *

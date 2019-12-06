@@ -34,9 +34,6 @@
 #include <regex>
 #include <cstring>
 
-#include "identity.h"
-#include "misc.h"
-
 extern int  yyerror(const char*);
 extern int  yylex();
 
@@ -51,18 +48,80 @@ namespace ext {
     const int CVT_ASM    = 2;
     const int CVT_PASCAL = 1;   // default ?
 
-    enum forth_flags {
-        FLAG_NULL = 0,      // empty
-        FLAG_SUBROUTINE,    // subroutine
-        FLAG_PARAMETER,     // parameter
-        FLAG_PROGRAM,       // program
-        FLAG_VARIABLE       // variable
+    enum  forth_flags {
+        e_forth_unknown = 0,
+        e_forth_bool,
+        e_forth_char,
+        e_forth_real,
+        e_forth_double,
+        e_forth_integer,
+        e_forth_program,
+        e_forth_routine,
+        e_forth_goto,
+        e_forth_end
     };
 
-    std::vector<forth_data_t> forth_current_data;
+    struct forth_base {
+        forth_base() {}
+        forth_base(std::string &data)
+            : id_data(data)      { }
+        forth_base(const forth_base &o)
+            : id_type(o.id_type)
+            , id_name(o.id_name)
+            , id_data(o.id_data) { }
 
-    int convert_mode = CVT_PASCAL;
-    int current_flag = ForthFlags::FLAG_NULL;
+        int         id_type = e_forth_unknown;
+        std::string id_name = std::string("");
+        std::string id_data = std::string("");
+
+        std::stringstream id_stream;
+    };
+
+    struct forth_vars : forth_base { };
+
+    struct forth_vars_bool   : forth_base { };
+    struct forth_vars_char   : forth_base { };
+    struct forth_vars_real   : forth_base { };
+    struct forth_vars_int    : forth_base { };
+    struct forth_vars_double : forth_base { };
+
+    struct forth_lbls : forth_base {
+        forth_lbls() {}
+        forth_lbls & operator=(const ext::forth_lbls & o) {
+            id_type = o.id_type;
+            id_name = o.id_name;
+            id_data = o.id_data;
+            return *this;
+        }
+    };
+    struct forth_cods : forth_base { };
+
+    struct forth_prgs : forth_base {
+        forth_prgs() {}
+
+        std::vector<forth_vars_bool  > vars_bool;
+        std::vector<forth_vars_char  > vars_char;
+        std::vector<forth_vars_real  > vars_real;
+        std::vector<forth_vars_int   > vars_int ;
+        std::vector<forth_vars_double> vars_double;
+
+        std::vector<forth_lbls> lbls;
+        std::vector<forth_cods> cods;
+    };
+
+    std::vector<forth_prgs> forth_pascal;
+
+    extern void forth_add(forth_prgs d1,                std::string text);
+    extern void forth_add(forth_prgs d1, forth_vars d2, std::string text);
+    extern void forth_add(forth_prgs d1, forth_lbls d2);
+    extern void forth_add(forth_prgs d1, forth_cods d2);
+
+
+    FILE * file_pile[2000];
+
+    int         convert_mode = CVT_PASCAL;
+    int         current_flag = forth_flags::e_forth_unknown;
+    std::string current_prg  = "";
     
     int yyget_line_gap = 0;
     int yymet_line_gap = 0;
