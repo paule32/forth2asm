@@ -1,0 +1,56 @@
+(* ======== PROGRAM ========== *)
+program HelloWorld;
+(* -------- VARIABLE: int ---- *)
+var
+sdss,cc,aa: Integer;
+(* -------- VARIABLE: real --- *)
+var
+vv,aa: Real;
+(* -------- VARIABLE: double - *)
+var
+vv,aa: Double;
+(* -------- LABEL's ---------- *)
+label
+Label10,Label30;
+begin
+(* -------- CODE ------------- *)
+goto Label30;
+str := 'sdsdsd';
+Label10:
+Label30:
+end.
+(* ======== PROGRAM ========== *)
+program test2;
+(* -------- LABEL's ---------- *)
+label
+Label12,Label134;
+begin
+(* -------- CODE ------------- *)
+goto Label12;
+Label12:
+Label134:
+end.
+(* ======== PROGRAM ========== *)
+program Test2;
+(* -------- VARIABLE: int ---- *)
+var
+a,b,c,c,cc: Integer;
+(* -------- LABEL's ---------- *)
+label
+Label10,Label20,Label30;
+begin
+(* -------- CODE ------------- *)
+a := 42;
+b := 21;
+c := a;
+goto Label10;
+Label10:
+goto Label20;
+Label20:
+goto Label30;
+Label30:
+end.
+(* ======== EOF ============== *)
+compiled lines: 60
+done.
+
