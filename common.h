@@ -121,6 +121,7 @@ namespace ext {
 
     int         convert_mode = CVT_PASCAL;
     int         current_flag = forth_flags::e_forth_unknown;
+    std::string current_var  = "";
     std::string current_prg  = "";
     
     int yyget_line_gap = 0;

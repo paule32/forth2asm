@@ -29,7 +29,10 @@
 #include <limits.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <limits.h>
+#include <ftw.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 
 #include "common.h"
 
@@ -46,8 +49,13 @@ extern int yyerror(const char*);
 #include "forth.tab.hpp"
 #undef yywrap
 
+const char yyerror_str1[] =    "comma sign not expected here";
+const char yyerror_str2[] =   "assing sign not expected here";
+const char yyerror_str3[] = "division sign not expected here";
+const char yyerror_str4[] = "parameter without closing brace";
+
 int yyerror(const char *p) {
-    std::cerr << "error:" << yyget_lineno() << ":" << p << std::endl;
+    std::cerr << "error:" << (yyget_lineno()+1) << ":" << p << std::endl;
     return yyget_lineno();
 }
 
@@ -63,18 +71,6 @@ void add_var_char  (std::string);
 void add_var_real  (std::string);
 void add_var_double(std::string);
 
-void check_structs(void)
-{
-#if 0
-    if (ext::forth_memory.size() < 1)
-    yyerror("\ninternal error - no data, but goto mark defined!");
-
-    if (ext::forth_memory.back().id_programs.size() < 1)
-    yyerror("\ngoto marks outside of program's not allowed!");
-
-    exit(1);
-#endif
-}
 %}
 
 %option noyywrap
@@ -86,6 +82,9 @@ ws          [ \t\n\r]
 REMS1       ^[c|C].*\n
 gotoline    ^[0-9]+
 ident       [a-zA-Z]+[a-zA-Z0-9_]*
+hexdigit    \B\#(?:[a-fA-F0–9]{6}|[a-fA-F0–9]{3})\b
+
+qoutedstr   (["']).*(['"])
 
 dimsid0     {ws}*{ident}{ws}*"("
 dimsid1     {ws}*{ident}{ws}*
@@ -96,8 +95,11 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 
 listsep     (({dimsid1})([,]{dimsid1})*)
 
-%x subser subser_parameter dimens ident_or_num integers reals doubles complexes
-%x precisions characters logicals complexs programs gotos
+%x subser subser_parameter dimens ident_or_num_or_str integers reals doubles complexes
+%x precisions characters logicals complexs programs gotos parameters
+%x parameters_num_str
+%x parameters_num_str2 parameters_num_str3
+%x parameters_num_str4 parameters_num_str5 parameters_num_str6
 %%
 
 ^\!.*\n     { /*yytext[ext::strlen(yytext)-2] = '\0'; std::cout << ext::yypadding(yytext) << std::endl; */ }
@@ -106,6 +108,19 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 
 {ws}*       { }
 \n*         { ++yylineno; }
+
+([l|L][o|O][g|G][i|I][c|C][a|A][l|L])                { BEGIN(logicals);   }
+([i|I][n|N][t|T][e|E][g|G][e|E][r|R])                { BEGIN(integers);   }
+([r|R][e|E][a|A][l|L])                               { BEGIN(reals);      }
+([d|D][o|O][u|U][b|B][l|L][e|E])                     { BEGIN(doubles);    }
+([c|C][o|O][m|M][p|P][l|L][e|E][x|X])                { BEGIN(complexs);   }
+([c|C][a|A][r|R][a|A][c|C][t|T][e|E][r|R])           { BEGIN(characters); }
+([d|D][i|I][m|M][e|E][n|n][s|S][i|I][o|O][n|N])      { BEGIN(dimens);     }
+([s|S][u|U][b|B][r|R][o|O][u|U][t|T][i|I][n|N][e|E]) { BEGIN(subser);     }
+([p|P][r|R][o|O][g|G][r|R][a|A][m|M])                { BEGIN(programs);   }
+([g|G][o|O][t|T][o|O])                               { BEGIN(gotos);      }
+([p|P][a|A][r|R][a|A][m|M][e|E][t|T][e|E][r|R])      { BEGIN(parameters); }
+
 ({ident}){ws}*"\="{ws}* {
     if (ext::convert_mode == ext::CVT_PASCAL) {
         std::string st = yytext;
@@ -114,11 +129,31 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         std::string(":="));
 
         add_cod(st);
+
+        std::string s2 = yytext;
+        ext::replaceStr(s2,std::string("=" ),std::string(""));
+        ext::replaceStr(s2,std::string(" " ),std::string(""));
+        ext::replaceStr(s2,std::string("\n"),std::string(""));
+        ext::replaceStr(s2,std::string("\t"),std::string(""));
+        ext::replaceStr(s2,std::string("\r"),std::string(""));
+        ext::current_var = s2;
     }
-    BEGIN(ident_or_num);
+    BEGIN(ident_or_num_or_str);
 }
 
-<ident_or_num>{ident} {
+<ident_or_num_or_str>{ident} {
+    std::stringstream ss;
+    ss << yytext;
+    ss << ";";
+    ss << std::endl;
+    ext::current_var = std::string(yytext);
+
+    if (ext::convert_mode == ext::CVT_PASCAL) {
+        add_cod(ss.str());
+    }
+    BEGIN(INITIAL);
+}
+<ident_or_num_or_str>{num} {
     std::stringstream ss;
     ss << yytext;
     ss << ";";
@@ -129,13 +164,14 @@ listsep     (({dimsid1})([,]{dimsid1})*)
     }
     BEGIN(INITIAL);
 }
-<ident_or_num>{num} {
+<ident_or_num_or_str>{qoutedstr} {
     std::stringstream ss;
     ss << yytext;
     ss << ";";
     ss << std::endl;
 
     if (ext::convert_mode == ext::CVT_PASCAL) {
+        add_var_char(ext::current_var);
         add_cod(ss.str());
     }
     BEGIN(INITIAL);
@@ -169,16 +205,38 @@ listsep     (({dimsid1})([,]{dimsid1})*)
     BEGIN(INITIAL);
 }
 
-([l|L][o|O][g|G][i|I][c|C][a|A][l|L])                { BEGIN(logicals);   }
-([i|I][n|N][t|T][e|E][g|G][e|E][r|R])                { BEGIN(integers);   }
-([r|R][e|E][a|A][l|L])                               { BEGIN(reals);      }
-([d|D][o|O][u|U][b|B][l|L][e|E])                     { BEGIN(doubles);    }
-([c|C][o|O][m|M][p|P][l|L][e|E][x|X])                { BEGIN(complexs);   }
-([c|C][a|A][r|R][a|A][c|C][t|T][e|E][r|R])           { BEGIN(characters); }
-([d|D][i|I][m|M][e|E][n|n][s|S][i|I][o|O][n|N])      { BEGIN(dimens);     }
-([s|S][u|U][b|B][r|R][o|O][u|U][t|T][i|I][n|N][e|E]) { BEGIN(subser);     }
-([p|P][r|R][o|O][g|G][r|R][a|A][m|M])                { BEGIN(programs);   }
-([g|G][o|O][t|T][o|O])                               { BEGIN(gotos);      }
+<parameters>{ws}*\({ws}*          { BEGIN(parameters_num_str2); }
+<parameters_num_str2>{ws}*\)      { BEGIN(INITIAL); }
+<parameters_num_str2>{ws}*{ident} {
+    BEGIN(parameters_num_str3);
+}
+<parameters_num_str3>{ws}*\={ws}*    { BEGIN(parameters_num_str4); }
+
+<parameters_num_str3>{ws}*\,{ws}*\)  { yyerror(yyerror_str1); exit(1); }
+<parameters_num_str3>{ws}*\={ws}*\)  { yyerror(yyerror_str2); exit(1); }
+<parameters_num_str3>{ws}*\/{ws}*\)  { yyerror(yyerror_str3); exit(1); }
+
+<parameters_num_str3>{ws}*\)         { BEGIN(INITIAL); }
+
+<parameters_num_str4>{num}           { BEGIN(parameters_num_str5); }
+<parameters_num_str4>{ident}         { BEGIN(parameters_num_str5); }
+
+<parameters_num_str5>{ws}*\,{ws}*\)  { yyerror(yyerror_str1); exit(1); }
+<parameters_num_str5>{ws}*\={ws}*\)  { yyerror(yyerror_str2); exit(1); }
+<parameters_num_str5>{ws}*\/{ws}*\)  { yyerror(yyerror_str3); exit(1); }
+
+<parameters_num_str5>{ws}*{num}      { BEGIN(parameters_num_str6); }
+<parameters_num_str5>{ws}*{ident}    { BEGIN(parameters_num_str6); }
+
+<parameters_num_str6>{ws}*\,{ws}*\)  { yyerror(yyerror_str1); exit(1); }
+<parameters_num_str6>{ws}*\={ws}*\)  { yyerror(yyerror_str2); exit(1); }
+<parameters_num_str6>{ws}*\/{ws}*\)  { yyerror(yyerror_str3); exit(1); }
+
+<parameters_num_str6>{ws}*\,         { BEGIN(parameters_num_str2); }
+<parameters_num_str6>{ws}*\)  {
+    BEGIN(INITIAL);
+}
+
 
 <logicals>{listsep} {
     std::string st = std::string(yytext);
@@ -547,113 +605,171 @@ int main(int argc, char **argv)
     auto pas = ext::forth_pascal;
     auto prg = pas.front();
 
+    std::stringstream ss,s1;
+    std::stringstream s2,s3,s4;
+
+    s2.clear();
+    s2 << "./out/pas";
+
+    s1.clear();
+    s1 << "rm -rf ";
+    s1 << s2.str() ;
+
+    s3.clear();
+    s3 << "mkdir -p ";
+    s3 << s2.str();
+
+    // WARNING: all data in the out folder will be lost !!!
+    system(s1.str().c_str());
+    system(s3.str().c_str());
+
     for (auto &pro : pas)
     {
         if (pro.id_name.size() > 0)
         {
-            std::cout << std::string("(* ======== PROGRAM ========== *)") << std::endl;
-            std::cout << "program ";
-            std::cout << pro.id_name  << ";" << std::endl;
+            // please keep this - code of conduct ...
+            ss = std::stringstream();
+            ss << std::string("(* ============================================================== *)") << std::endl;
+            ss << std::string("(* Fortran to Pascal transpiller.                                 *)") << std::endl;
+            ss << std::string("(*                                                                *)") << std::endl;
+            ss << std::string("(* (c) 2019 by Jens Kallup - non-profit Software                  *)") << std::endl;
+            ss << std::string("(* all rights reserved.                                           *)") << std::endl;
+            ss << std::string("(* ============================================================== *)") << std::endl;
+
+            ss << std::string("(* ======== PROGRAM ========== *)") << std::endl;
+            ss << "program ";
+            ss << pro.id_name  << ";" << std::endl;
+
+            s4 = std::stringstream();   // clear
+            s4 << s2.str();
+            s4 << "/";
+            s4 << pro.id_name;
+            s4 << ".pas";
+
+            FILE * program_file = nullptr;
+            program_file = fopen(s4.str().c_str(),"w");
+            if (!program_file) {
+                std::cerr << "fopen error: " << strerror(errno) << std::endl;
+                break;
+            }
 
             auto ppv = pro.vars_bool;
             if (ppv.size() > 0){
-                std::cout << "(* -------- VARIABLE: bool --- *)" << std::endl;
+                ss << "(* -------- VARIABLE: bool --- *)" << std::endl;
                 int plen = 0;
-                std::cout << "var" << std::endl;
+                ss << "var" << std::endl;
                 for (auto &var : ppv)
                 {
                     ++plen;
-                    std::cout << var.id_name;
+                    ss << var.id_name;
                     if (plen > ppv.size()-1) {
-                        std::cout << ": Boolean;" << std::endl;
+                        ss << ": Boolean;" << std::endl;
                     }   else {
-                        std::cout << ",";
+                        ss << ",";
                     }
                 }
             }
             auto ppi = pro.vars_int;
             if (ppi.size() > 0){
-                std::cout << "(* -------- VARIABLE: int ---- *)" << std::endl;
+                ss << "(* -------- VARIABLE: int ---- *)" << std::endl;
                 int plen = 0;
-                std::cout << "var" << std::endl;
+                ss << "var" << std::endl;
                 for (auto &var : ppi)
                 {
                     ++plen;
-                    std::cout << var.id_name;
+                    ss << var.id_name;
                     if (plen > ppi.size()-1) {
-                        std::cout << ": Integer;" << std::endl;
+                        ss << ": Integer;" << std::endl;
                     }   else {
-                        std::cout << ",";
+                        ss << ",";
                     }
                 }
             }
             auto ppr = pro.vars_real;
             if (ppr.size() > 0){
-                std::cout << "(* -------- VARIABLE: real --- *)" << std::endl;
+                ss << "(* -------- VARIABLE: real --- *)" << std::endl;
                 int plen = 0;
-                std::cout << "var" << std::endl;
+                ss << "var" << std::endl;
                 for (auto &var : ppr)
                 {
                     ++plen;
-                    std::cout << var.id_name;
+                    ss << var.id_name;
                     if (plen > ppr.size()-1) {
-                        std::cout << ": Real;" << std::endl;
+                        ss << ": Real;" << std::endl;
                     }   else {
-                        std::cout << ",";
+                        ss << ",";
+                    }
+                }
+            }
+            auto ppd = pro.vars_real;
+            if (ppd.size() > 0){
+                ss << "(* -------- VARIABLE: double - *)" << std::endl;
+                int plen = 0;
+                ss << "var" << std::endl;
+                for (auto &var : ppd)
+                {
+                    ++plen;
+                    ss << var.id_name;
+                    if (plen > ppd.size()-1) {
+                        ss << ": Double;" << std::endl;
+                    }   else {
+                        ss << ",";
                     }
                 }
             }
             auto ppc = pro.vars_char;
             if (ppc.size() > 0){
-                std::cout << "(* -------- VARIABLE: char --- *)" << std::endl;
+                ss << "(* -------- VARIABLE: char --- *)" << std::endl;
                 int plen = 0;
-                std::cout << "var" << std::endl;
+                ss << "var" << std::endl;
                 for (auto &var : ppc)
                 {
                     ++plen;
-                    std::cout << var.id_name;
+                    ss << var.id_name;
                     if (plen > ppc.size()-1) {
-                        std::cout << ": String;" << std::endl;
+                        ss << ": String;" << std::endl;
                     }   else {
-                        std::cout << ",";
+                        ss << ",";
                     }
                 }
             }
             auto ppa = pro.lbls;
             if (ppa.size() > 0){
-                std::cout << "(* -------- LABEL's ---------- *)" << std::endl;
+                ss << "(* -------- LABEL's ---------- *)" << std::endl;
                 int plen = 0;
-                std::cout << "label" << std::endl;
+                ss << "label" << std::endl;
                 for (auto &lbl : ppa)
                 {
                     ++plen;
-                    std::cout << lbl.id_name;
+                    ss << lbl.id_name;
                     if (plen > ppa.size()-1)
-                    std::cout << ";"; else
-                    std::cout << ",";
-                }   std::cout << std::endl;
+                    ss << ";"; else
+                    ss << ",";
+                }   ss << std::endl;
             }
 
-            std::cout << "begin" << std::endl;
+            ss << "begin" << std::endl;
 
             auto pcc = pro.cods;
             if (pcc.size() > 0){
-                std::cout << "(* -------- CODE ------------- *)" << std::endl;
+                ss << "(* -------- CODE ------------- *)" << std::endl;
                 for (auto &cod : pcc) {
-                    std::cout << cod.id_name;
+                    ss << cod.id_name;
                 }
             }
-            std::cout << "." << std::endl;
+            ss << "." << std::endl;
+
+            fprintf(program_file,"%s",ss.str().c_str());
+            fflush (program_file);
+            fclose (program_file);
         }
     }
-    __asm__("MyGoToLabel_ErrorNo:");
-
-    std::cout << "(* ======== EOF ============== *)" << std::endl;
 
     std::cout << "compiled lines: " << _lineno << std::endl;
     std::cout << "done." <<
     std::endl;
 
+    fclose(fr);
     fclose(fw);
     return result;
 }
