@@ -1,2 +1,2 @@
 # forth2asm
-forth to asm transpiller
+forth to pascal transpiller

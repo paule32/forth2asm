@@ -21,6 +21,11 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+//
+// exec example: fort2pas --mode pascal --auto source.f
+//
+// Legend: --mode = pascal transpile
+//         --auto = _no_ interactive run
 // --------------------------------------------------------------------------------
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,6 +66,24 @@ int yyerror(const char *p) {
 
 int yywrap() { return 1; }
 
+#ifdef WINDOWS
+# define DIR_SEPERATOR "\\\\"    // windows
+#else
+# define DIR_SEPERATOR "/"       // Linux
+#endif
+
+std::string banner()
+{
+    auto ss = std::stringstream {};
+    ss << std::string("(* ============================================================== *)") << std::endl;
+    ss << std::string("(* Fortran to Pascal transpiller.                                 *)") << std::endl;
+    ss << std::string("(*                                                                *)") << std::endl;
+    ss << std::string("(* (c) 2019 by Jens Kallup - non-profit Software                  *)") << std::endl;
+    ss << std::string("(* all rights reserved.                                           *)") << std::endl;
+    ss << std::string("(* ============================================================== *)") << std::endl;
+    return ss.str();
+}
+
 void add_prg(std::string);
 void add_lbl(std::string);
 void add_cod(std::string);
@@ -70,6 +93,9 @@ void add_var_int   (std::string);
 void add_var_char  (std::string);
 void add_var_real  (std::string);
 void add_var_double(std::string);
+
+void add_proc(std::string);
+void add_func(std::string);
 
 %}
 
@@ -95,11 +121,27 @@ dimsidB     {dimsid0}({dimsid1}{dimsid2}{dimsid1})*{ws}*")"
 
 listsep     (({dimsid1})([,]{dimsid1})*)
 
+l_not       (\.[n|N][o|O][t|T]\.)
+l_and       (\.[a|A][n|N][d|D]\.)
+l_or        (\.[o|O][r|R]\.)
+l_xor       (\.[x|X][o|O][r|R]\.)
+l_eqv       (\.[e|E][q|Q][v|V]\.)
+l_neq       (\.[n|N][e|E][q|Q][v|V]\.)
+
+l_false     (\.[f|F][a|A][l|L][s|S][e|E]\.)
+l_true      (\.[t|T][r|R][u|U][e|E]\.)
+
 %x subser subser_parameter dimens ident_or_num_or_str integers reals doubles complexes
 %x precisions characters logicals complexs programs gotos parameters
 %x parameters_num_str
 %x parameters_num_str2 parameters_num_str3
 %x parameters_num_str4 parameters_num_str5 parameters_num_str6
+%x subser_1
+%x subser_2
+%x subser_3
+
+%x l_not l_and l_or l_xor l_eqv l_neq
+
 %%
 
 ^\!.*\n     { /*yytext[ext::strlen(yytext)-2] = '\0'; std::cout << ext::yypadding(yytext) << std::endl; */ }
@@ -333,6 +375,7 @@ listsep     (({dimsid1})([,]{dimsid1})*)
     std::string st = std::string(yytext);
     ext::removeCharsFromString(st,(char*)"\n\r\t ");
     ext::current_flag = ext::forth_flags::e_forth_program;
+    ext::current_prg  = st;
     add_prg(st);
     BEGIN(INITIAL);
 }
@@ -340,7 +383,7 @@ listsep     (({dimsid1})([,]{dimsid1})*)
     std::string st = std::string(yytext);
     ext::removeCharsFromString(st,(char*)"\n\r\t ");
     ext::current_flag = ext::forth_flags::e_forth_end;
-    add_cod(st);
+    //add_cod(st);
 
     BEGIN(INITIAL);
 }
@@ -354,12 +397,6 @@ listsep     (({dimsid1})([,]{dimsid1})*)
 
 <subser>{ws}*   { }
 <subser>{ident} {
-#if 0
-    std::stringstream ss;
-    ss  << std::string("subroutine: ")
-        << std::string(yytext);
-    std::cout << ext::yypadding(ss.str());
-
     if (ext::convert_mode == ext::CVT_ASM) {
         std::cout << std::string(yytext) << ":" << std::endl;
 
@@ -367,78 +404,21 @@ listsep     (({dimsid1})([,]{dimsid1})*)
         std::cout << "\tmov\tebp, esp" << std::endl;
     }   else
     if (ext::convert_mode == ext::CVT_PASCAL) {
-        std::cout <<
-        std::endl << "procedure " << yytext;
+        add_proc(std::string(yytext));
     }
-#endif
+
     BEGIN(subser_parameter);
 }
 <subser>\n   { ++yylineno; }
 
-<subser_parameter>{ws}*"("(({ws}*)|({ws}*{ident}{ws}*)|({ws}*{ident}{ws}*","{ws}*{ident}{ws}*)|(({ws}*{ident}",")*{ws}*{ident}{ws}*))")" {
-#if 0
-    std::string st = std::string(yytext);
-    ext::removeCharsFromString(st,(char*)"() ");
+<subser_parameter>{ws}*\(     { BEGIN(subser_2); }
+<subser_2>{ws}*\)             { BEGIN(INITIAL);  }
+<subser_2>{ws}*{ident}        { BEGIN(subser_3); }
+<subser_1>{ws}*{ident}        { BEGIN(subser_3); }
+<subser_1>{ws}*{ident}{ws}*\) { BEGIN(INITIAL);  }
+<subser_3>{ws}*\,             { BEGIN(subser_1); }
+<subser_3>{ws}*\)             { BEGIN(INITIAL);  }
 
-    std::vector<std::string> parameter;
-    parameter = ext::split(st,',');
-
-    ext::forth_namespace ns, ts;
-    ns = ext::forth_memory.back();
-
-    int plen = parameter.size() - 1;
-    int ilen = ns.id_parameter.size();
-
-    if (plen > 0) {
-        for (int j = 0; j < plen; ++j) {
-            if (ilen < 1) {
-                ts.id = parameter[j];
-                ts.id_type = ext::forth_flags::FLAG_PARAMETER;
-                ns.id_parameter.push_back(ts);
-            }
-            else if (strstr(ns.id_parameter[j].id.c_str(),parameter[j].c_str())) {
-                // exists ...
-                printf("121212\n");
-            }
-/*          else {
-                ts.id = yytext;
-                ts.id_type = ext::ForthFlags::FLAG_PARAMETER;
-                ns.id_parameter.push_back(ts);
-            }*/
-        }
-    }
-
-    if (ext::convert_mode == ext::CVT_ASM) {
-        ext::tmp_parameter = 1;
-
-        std::cout << "\tsub\tesp, " << ((parameter.size() * sizeof(uint32_t)) + sizeof(uint32_t));
-        std::cout << std::endl;
-
-        for (auto &pav: parameter) {
-            ext::tmp_parameter += 1;
-            ext::tmp_string_stream << "\tmov\tdword ptr [ebp - " << (ext::tmp_parameter * sizeof(uint32_t));
-            ext::tmp_string_stream << "], " << pav << "\n";
-        }
-    }   else
-    if (ext::convert_mode == ext::CVT_PASCAL) {
-        ext::tmp_string_stream.clear();
-        if (parameter.size() < 1)
-        std::cout << ";"; else
-        std::cout << "(";
-        int plen = parameter.size();
-        for (int i = 0; i < plen; ++i) {
-            ext::tmp_string_stream << parameter[i];
-            if (i < plen)    {
-            if (i == plen-1) {
-            ext::tmp_string_stream << ");" << std::endl; break; }
-            ext::tmp_string_stream << ","; }
-        }
-    }
-
-    std::cout << ext::tmp_string_stream.str();
-#endif
-    BEGIN(INITIAL);
-}
 <subser_parameter>\n  { ++yylineno; }
 
 .   {
@@ -459,19 +439,23 @@ int main(int argc, char **argv)
     static const struct option long_options[] =
     {
         { "mode",    required_argument, 0, 400 },
+        { "auto",    no_argument,       0, 401 },
         { "verbose", no_argument,       0, 402 },
         { "version", no_argument,       0, 404 },
         { "help",    no_argument,       0, 408 },
         { 0     ,    0          ,       0,  0  }
     };
 
-    std::cerr << "forth2asm (c) 2019 Jens Kallup - non profit Software" << std::endl;
-    std::cerr << "all rights reserved."    << std::endl                 << std::endl;
+    std::cout << "forth2asm (c) 2019 Jens Kallup - non profit Software" << std::endl;
+    std::cout << "all rights reserved."    << std::endl                 << std::endl;
 
     if (argc < 2) {
         std::cout << "no parameter given." << std::endl;
         return 1;
     }
+
+    int w_flag = 0;
+    #define macro_w_flag 1
 
     while (1) {
         opt = optind ? optind : 1;
@@ -516,6 +500,10 @@ int main(int argc, char **argv)
             std::cout << "source file will be converted to: " << optarg << std::endl;
         }
         break;
+
+        case 401:
+            w_flag = macro_w_flag;
+            break;
 
         case 402:
             printf("option verbose\n");
@@ -607,51 +595,130 @@ int main(int argc, char **argv)
 
     std::stringstream ss,s1;
     std::stringstream s2,s3,s4;
+    std::string       prg_path("./out/");
 
-    s2.clear();
-    s2 << "./out/pas";
+    s2 = std::stringstream();
+    s2 << prg_path << "pas";
 
-    s1.clear();
-    s1 << "rm -rf ";
-    s1 << s2.str() ;
+    // work both: Linux/Windows:
+    struct stat sb;
+    if (stat(prg_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {    // yes
+        char pass;
+        if (w_flag == macro_w_flag) {
+            goto auto_label;
+        }
+        else {
+            while (1) {
+                fflush(stdin);
+                std::cout << std::endl << "Warning: output directory exists, delete it? [y/n]: ";
+                fscanf(stdin,"%c", &pass);
+                fflush(stdin);
+                if (pass == 'n') {
+                    std::cerr << "abort transpile." << std::endl;
+                    fclose(fr);
+                    fclose(fw);
+                    exit(1);
+                }
+                else if (pass == 'y') {
+                    goto auto_label;
+                    break;
+                }
+                else {
+                    continue;
+                }
+            }
+        }
+    }
+    auto_label:
+        s1 = std::stringstream();
+        s1 << "rm -rf ";
+        s1 << prg_path ;
 
-    s3.clear();
-    s3 << "mkdir -p ";
-    s3 << s2.str();
+        s3 = std::stringstream();
+        s3 << "mkdir -p ";
+        s3 << s2.str();
 
-    // WARNING: all data in the out folder will be lost !!!
-    system(s1.str().c_str());
-    system(s3.str().c_str());
+        // WARNING: all data in the out folder will be lost !!!
+        system(s1.str().c_str());
+        system(s3.str().c_str());
+    auto_next:
 
+    FILE * program_file = nullptr;
     for (auto &pro : pas)
     {
+        // please keep this - code of conduct ...
+        ss = std::stringstream();
+        ss << banner();
+
+        s4 = std::stringstream();   // clear
+        s4 << "./out/pas/";
+        s4 << pro.id_name << "/";
+
+        s3 = std::stringstream();
+        s3 << "mkdir -p ";
+        s3 << s4.str();
+        system(s3.str().c_str());
+
+        // subroutine = unit
+        auto subs = pro.proc;
+        if (subs.size() > 0) {
+            for (auto &sub : subs) {
+                s4 = std::stringstream();   // clear
+                s4 << "./out/pas/";
+                s4 << pro.id_name << "/";
+                s4 << sub.id_name;
+                s4 << ".pas";
+
+                program_file = fopen(s4.str().c_str(),"w");
+                if (!program_file) {
+                    std::cerr << "Fopen error: " << strerror(errno) << std::endl;
+                    break;
+                }
+
+                ss << "unit " << sub.id_name << ";" << std::endl;
+                ss << "interface"      << std::endl;
+                ss << "implementation" << std::endl;
+
+                ss << "end." << std::endl;
+
+                fprintf(program_file,"%s",ss.str().c_str());
+                fflush (program_file);
+                fclose (program_file);
+            }
+        }
+
         if (pro.id_name.size() > 0)
         {
             // please keep this - code of conduct ...
             ss = std::stringstream();
-            ss << std::string("(* ============================================================== *)") << std::endl;
-            ss << std::string("(* Fortran to Pascal transpiller.                                 *)") << std::endl;
-            ss << std::string("(*                                                                *)") << std::endl;
-            ss << std::string("(* (c) 2019 by Jens Kallup - non-profit Software                  *)") << std::endl;
-            ss << std::string("(* all rights reserved.                                           *)") << std::endl;
-            ss << std::string("(* ============================================================== *)") << std::endl;
+            ss << banner();
 
-            ss << std::string("(* ======== PROGRAM ========== *)") << std::endl;
-            ss << "program ";
-            ss << pro.id_name  << ";" << std::endl;
+            s2 = std::stringstream();
+            s2 << prg_path;
+            s2 << "pas/";
+            s2 << pro.id_name;
 
+            s3 = std::stringstream();
+            s3 << "mkdir -p ";
+            s3 << s2.str();
+            system(s3.str().c_str());
+
+            // program
             s4 = std::stringstream();   // clear
             s4 << s2.str();
             s4 << "/";
             s4 << pro.id_name;
             s4 << ".pas";
 
-            FILE * program_file = nullptr;
             program_file = fopen(s4.str().c_str(),"w");
             if (!program_file) {
                 std::cerr << "fopen error: " << strerror(errno) << std::endl;
                 break;
             }
+
+            ss << std::string("(* ======== PROGRAM ========== *)") << std::endl;
+            ss << "program ";
+            ss << pro.id_name  << ";" << std::endl;
 
             auto ppv = pro.vars_bool;
             if (ppv.size() > 0){
@@ -757,7 +824,7 @@ int main(int argc, char **argv)
                     ss << cod.id_name;
                 }
             }
-            ss << "." << std::endl;
+            ss << "end." << std::endl;
 
             fprintf(program_file,"%s",ss.str().c_str());
             fflush (program_file);
@@ -883,6 +950,18 @@ void add_var_double(std::string st) {
     prg.vars_double.push_back(ll);
 }
 
+void add_proc(std::string st) {
+    auto &prg = ext::forth_pascal.back();
+    ext::forth_proc ll;
+    ll.id_name = st;
+    prg.proc.push_back(ll);
+}
+void add_func(std::string st) {
+    auto &prg = ext::forth_pascal.back();
+    ext::forth_func ll;
+    ll.id_name = st;
+    prg.func.push_back(ll);
+}
 
 
 void add_lbl(std::string s1) {

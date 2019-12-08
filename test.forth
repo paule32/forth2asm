@@ -24,10 +24,16 @@ str = 'sdsdsd'
 30
 end
 
+subroutine funcode()
+end
+
 program test2
     goto 12
 12
 134
+end
+
+subroutine makers()
 end
 
 program Test2
@@ -46,9 +52,10 @@ program Test2
 
 end
 
-*subroutine nbr (ia, na, ad, ncon, nrr, nr, rc, rk, n, rmax, mc)
-*
+subroutine nbr (ia, na, ad, ncon, nrr, nr, rc, rk, n, rmax, mc)
+
 *   dimension ia(mc, nr), na()
-*c, na(mc,nr), nq( )
+
 *
-*end
+end
+

@@ -85,6 +85,9 @@ namespace ext {
     struct forth_vars_int    : forth_base { };
     struct forth_vars_double : forth_base { };
 
+    struct forth_proc : forth_base { };
+    struct forth_func : forth_base { };
+
     struct forth_lbls : forth_base {
         forth_lbls() {}
         forth_lbls & operator=(const ext::forth_lbls & o) {
@@ -107,15 +110,12 @@ namespace ext {
 
         std::vector<forth_lbls> lbls;
         std::vector<forth_cods> cods;
+
+        std::vector<forth_proc> proc;
+        std::vector<forth_func> func;
     };
 
     std::vector<forth_prgs> forth_pascal;
-
-    extern void forth_add(forth_prgs d1,                std::string text);
-    extern void forth_add(forth_prgs d1, forth_vars d2, std::string text);
-    extern void forth_add(forth_prgs d1, forth_lbls d2);
-    extern void forth_add(forth_prgs d1, forth_cods d2);
-
 
     FILE * file_pile[2000];
 
