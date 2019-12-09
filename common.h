@@ -25,6 +25,18 @@
 #define COMMON_H
 #pragma once
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <strings.h>
+#include <ctype.h>
+#include <limits.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <limits.h>
+#include <ftw.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #include <iostream>     // std::cout
 #include <vector>
 
@@ -34,13 +46,7 @@
 #include <regex>
 #include <cstring>
 
-extern int  yyerror(const char*);
-extern int  yylex();
-
-extern void yyset_in (FILE*);
-extern void yyset_out(FILE*);
-extern void yyset_lineno(int);
-extern int  yyget_lineno();
+#include "data.h"
 
 // my own namespace: non-standard !!
 namespace ext {
@@ -88,6 +94,8 @@ namespace ext {
     struct forth_proc : forth_base { };
     struct forth_func : forth_base { };
 
+    struct forth_cnst : forth_base { };
+
     struct forth_lbls : forth_base {
         forth_lbls() {}
         forth_lbls & operator=(const ext::forth_lbls & o) {
@@ -113,64 +121,33 @@ namespace ext {
 
         std::vector<forth_proc> proc;
         std::vector<forth_func> func;
+
+        std::vector<forth_cnst> cnst;
     };
 
-    std::vector<forth_prgs> forth_pascal;
+    extern std::vector<forth_prgs> forth_pascal;
 
-    FILE * file_pile[2000];
+    extern FILE * file_pile[2000];
 
-    int         convert_mode = CVT_PASCAL;
-    int         current_flag = forth_flags::e_forth_unknown;
-    std::string current_var  = "";
-    std::string current_prg  = "";
+    extern int         convert_mode;
+    extern int         current_flag;
+    extern std::string current_var;
+    extern std::string current_prg;
     
-    int yyget_line_gap = 0;
-    int yymet_line_gap = 0;
+    extern int yyget_line_gap;
+    extern int yymet_line_gap;
 
     // keep it here, because yylex will double it !
     extern size_t strlen(const char * _str);
 
-    extern ::std::string yypadding(::std::string c);
-    extern ::std::string string2upper(::std::string s);
-    extern ::std::string string2lower(::std::string s);
+    extern std::string yypadding(std::string c);
+    extern std::string string2upper(std::string s);
+    extern std::string string2lower(std::string s);
 
-    extern ::std::vector<::std::string> split(const ::std::string& s, char delimiter);
+    extern std::vector< std::string> split(const std::string& s, char delimiter);
 
-    extern void removeCharsFromString(::std::string &str, char* charsToRemove);
-    extern void replaceStr(::std::string &data, ::std::string toSearch, ::std::string replaceStr);
-
-    void removeCharsFromString(::std::string &str, char* charsToRemove) {
-        for (unsigned int i = 0; i < strlen(charsToRemove); ++i) {
-            str.erase(remove(str.begin(),str.end(),charsToRemove[i]),str.end());
-        }
-    }
-
-    void replaceStr(::std::string &data, ::std::string toSearch, ::std::string replaceStr)
-    {
-	    // Get the first occurrence
-	    size_t pos = data.find(toSearch);
-     
-	    // Repeat till end is reached
-	    while( pos != std::string::npos)
-	    {
-		    // Replace this occurrence of Sub String
-		    data.replace(pos, toSearch.size(), replaceStr);
-		    // Get the next occurrence from the current position
-		    pos = data.find(toSearch, pos + replaceStr.size());
-	    }
-    }
-
-    ::std::vector< ::std::string> split(const ::std::string& s, char delimiter)
-    {
-        ::std::vector< ::std::string> tokens;
-        ::std::string token;
-        ::std::istringstream tokenStream(s);
-        while (::std::getline(tokenStream, token, delimiter))
-        {
-           tokens.push_back(token);
-        }
-        return tokens;
-    }
+    extern void removeCharsFromString(std::string &str, char* charsToRemove);
+    extern void replaceStr(std::string &data, std::string toSearch, std::string replaceStr);
 }
 
 #endif

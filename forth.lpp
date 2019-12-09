@@ -27,75 +27,15 @@
 // Legend: --mode = pascal transpile
 //         --auto = _no_ interactive run
 // --------------------------------------------------------------------------------
-#include <stdio.h>
-#include <stdlib.h>
-#include <strings.h>
-#include <ctype.h>
-#include <limits.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <limits.h>
-#include <ftw.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 
 #include "common.h"
 
 #define YYDEBUG 1
 #define YYTYPE yylval
 
-//-- FUNCTION DEFINITIONS ---------------------------------
-
-extern int yyparse();
-extern int yylex();
-
-extern int yyerror(const char*);
-
 #include "forth.tab.hpp"
 #undef yywrap
-
-const char yyerror_str1[] =    "comma sign not expected here";
-const char yyerror_str2[] =   "assing sign not expected here";
-const char yyerror_str3[] = "division sign not expected here";
-const char yyerror_str4[] = "parameter without closing brace";
-
-int yyerror(const char *p) {
-    std::cerr << "error:" << (yyget_lineno()+1) << ":" << p << std::endl;
-    return yyget_lineno();
-}
-
-int yywrap() { return 1; }
-
-#ifdef WINDOWS
-# define DIR_SEPERATOR "\\\\"    // windows
-#else
-# define DIR_SEPERATOR "/"       // Linux
-#endif
-
-std::string banner()
-{
-    auto ss = std::stringstream {};
-    ss << std::string("(* ============================================================== *)") << std::endl;
-    ss << std::string("(* Fortran to Pascal transpiller.                                 *)") << std::endl;
-    ss << std::string("(*                                                                *)") << std::endl;
-    ss << std::string("(* (c) 2019 by Jens Kallup - non-profit Software                  *)") << std::endl;
-    ss << std::string("(* all rights reserved.                                           *)") << std::endl;
-    ss << std::string("(* ============================================================== *)") << std::endl;
-    return ss.str();
-}
-
-void add_prg(std::string);
-void add_lbl(std::string);
-void add_cod(std::string);
-
-void add_var_bool  (std::string);
-void add_var_int   (std::string);
-void add_var_char  (std::string);
-void add_var_real  (std::string);
-void add_var_double(std::string);
-
-void add_proc(std::string);
-void add_func(std::string);
+int    yywrap() { return 1; }
 
 %}
 
@@ -250,29 +190,35 @@ l_true      (\.[t|T][r|R][u|U][e|E]\.)
 <parameters>{ws}*\({ws}*          { BEGIN(parameters_num_str2); }
 <parameters_num_str2>{ws}*\)      { BEGIN(INITIAL); }
 <parameters_num_str2>{ws}*{ident} {
+    ext::current_var = std::string(yytext);
     BEGIN(parameters_num_str3);
 }
 <parameters_num_str3>{ws}*\={ws}*    { BEGIN(parameters_num_str4); }
 
-<parameters_num_str3>{ws}*\,{ws}*\)  { yyerror(yyerror_str1); exit(1); }
-<parameters_num_str3>{ws}*\={ws}*\)  { yyerror(yyerror_str2); exit(1); }
-<parameters_num_str3>{ws}*\/{ws}*\)  { yyerror(yyerror_str3); exit(1); }
+<parameters_num_str3>{ws}*\,{ws}*\)  { yyerror(yyerror_str1[LOCALES_LANG]); exit(1); }
+<parameters_num_str3>{ws}*\={ws}*\)  { yyerror(yyerror_str2[LOCALES_LANG]); exit(1); }
+<parameters_num_str3>{ws}*\/{ws}*\)  { yyerror(yyerror_str3[LOCALES_LANG]); exit(1); }
 
 <parameters_num_str3>{ws}*\)         { BEGIN(INITIAL); }
 
-<parameters_num_str4>{num}           { BEGIN(parameters_num_str5); }
-<parameters_num_str4>{ident}         { BEGIN(parameters_num_str5); }
+<parameters_num_str4>{num}           {
+    add_cnst(ext::current_var,std::string(yytext));
+    BEGIN(parameters_num_str5);
+}
+<parameters_num_str4>{ident}         {
+    BEGIN(parameters_num_str5);
+}
 
-<parameters_num_str5>{ws}*\,{ws}*\)  { yyerror(yyerror_str1); exit(1); }
-<parameters_num_str5>{ws}*\={ws}*\)  { yyerror(yyerror_str2); exit(1); }
-<parameters_num_str5>{ws}*\/{ws}*\)  { yyerror(yyerror_str3); exit(1); }
+<parameters_num_str5>{ws}*\,{ws}*\)  { yyerror(yyerror_str1[LOCALES_LANG]); exit(1); }
+<parameters_num_str5>{ws}*\={ws}*\)  { yyerror(yyerror_str2[LOCALES_LANG]); exit(1); }
+<parameters_num_str5>{ws}*\/{ws}*\)  { yyerror(yyerror_str3[LOCALES_LANG]); exit(1); }
 
 <parameters_num_str5>{ws}*{num}      { BEGIN(parameters_num_str6); }
 <parameters_num_str5>{ws}*{ident}    { BEGIN(parameters_num_str6); }
 
-<parameters_num_str6>{ws}*\,{ws}*\)  { yyerror(yyerror_str1); exit(1); }
-<parameters_num_str6>{ws}*\={ws}*\)  { yyerror(yyerror_str2); exit(1); }
-<parameters_num_str6>{ws}*\/{ws}*\)  { yyerror(yyerror_str3); exit(1); }
+<parameters_num_str6>{ws}*\,{ws}*\)  { yyerror(yyerror_str1[LOCALES_LANG]); exit(1); }
+<parameters_num_str6>{ws}*\={ws}*\)  { yyerror(yyerror_str2[LOCALES_LANG]); exit(1); }
+<parameters_num_str6>{ws}*\/{ws}*\)  { yyerror(yyerror_str3[LOCALES_LANG]); exit(1); }
 
 <parameters_num_str6>{ws}*\,         { BEGIN(parameters_num_str2); }
 <parameters_num_str6>{ws}*\)  {
@@ -529,15 +475,16 @@ int main(int argc, char **argv)
 
     if (optind < argc) {
         while (optind < argc) {
-            if (!(ext::file_pile[optind++] = fopen(argv[optind-1],"r"))) {
+            if (!(ext::file_pile[optind] = fopen(argv[optind],"r"))) {
+                optind += 1;
                 char buffer[200];
                 sprintf(buffer,"can't open file: %s",argv[optind-1]);
                 perror (buffer);
                 return 1;
             }
             else {
-                fclose(ext::file_pile[optind-1]);
-                forth_files.push_back(argv[optind-1]);
+                fclose(ext::file_pile[optind]);
+                forth_files.push_back(argv[optind]);
             }
         }
     }
@@ -597,7 +544,7 @@ int main(int argc, char **argv)
     std::stringstream s2,s3,s4;
     std::string       prg_path("./out/");
 
-    s2 = std::stringstream();
+    s2.str("");
     s2 << prg_path << "pas";
 
     // work both: Linux/Windows:
@@ -630,11 +577,11 @@ int main(int argc, char **argv)
         }
     }
     auto_label:
-        s1 = std::stringstream();
+        s1.str("");
         s1 << "rm -rf ";
         s1 << prg_path ;
 
-        s3 = std::stringstream();
+        s3.str("");
         s3 << "mkdir -p ";
         s3 << s2.str();
 
@@ -647,14 +594,14 @@ int main(int argc, char **argv)
     for (auto &pro : pas)
     {
         // please keep this - code of conduct ...
-        ss = std::stringstream();
+        ss.str("");
         ss << banner();
 
-        s4 = std::stringstream();   // clear
+        s4.str("");   // clear
         s4 << "./out/pas/";
         s4 << pro.id_name << "/";
 
-        s3 = std::stringstream();
+        s3.str("");
         s3 << "mkdir -p ";
         s3 << s4.str();
         system(s3.str().c_str());
@@ -663,7 +610,7 @@ int main(int argc, char **argv)
         auto subs = pro.proc;
         if (subs.size() > 0) {
             for (auto &sub : subs) {
-                s4 = std::stringstream();   // clear
+                s4.str("");   // clear
                 s4 << "./out/pas/";
                 s4 << pro.id_name << "/";
                 s4 << sub.id_name;
@@ -690,21 +637,21 @@ int main(int argc, char **argv)
         if (pro.id_name.size() > 0)
         {
             // please keep this - code of conduct ...
-            ss = std::stringstream();
+            ss.str("");
             ss << banner();
 
-            s2 = std::stringstream();
+            s2.str("");
             s2 << prg_path;
             s2 << "pas/";
             s2 << pro.id_name;
 
-            s3 = std::stringstream();
+            s3.str("");
             s3 << "mkdir -p ";
             s3 << s2.str();
             system(s3.str().c_str());
 
             // program
-            s4 = std::stringstream();   // clear
+            s4.str("");   // clear
             s4 << s2.str();
             s4 << "/";
             s4 << pro.id_name;
@@ -785,7 +732,7 @@ int main(int argc, char **argv)
                 }
             }
             auto ppc = pro.vars_char;
-            if (ppc.size() > 0){
+            if (ppc.size()){
                 ss << "(* -------- VARIABLE: char --- *)" << std::endl;
                 int plen = 0;
                 ss << "var" << std::endl;
@@ -800,6 +747,19 @@ int main(int argc, char **argv)
                     }
                 }
             }
+            auto pc2 = pro.cnst;
+            if (pc2.size()) {
+                ss << "(* -------- CONSTANT items --- *)" << std::endl;
+                ss << "const" << std::endl;
+                for (auto &var : pc2)
+                {
+                    ss << var.id_name;
+                    ss << " = ";
+                    ss << var.id_data;
+                    ss << ";" << std::endl;
+                }
+            }
+
             auto ppa = pro.lbls;
             if (ppa.size() > 0){
                 ss << "(* -------- LABEL's ---------- *)" << std::endl;
@@ -841,144 +801,3 @@ int main(int argc, char **argv)
     return result;
 }
 
-
-std::string ext::yypadding(::std::string c) {
-std::stringstream ss;
-    if (ext::convert_mode == CVT_ASM)    { ss
-        << ";"
-        << std::setw(ext::yymet_line_gap)
-        <<      yyget_lineno()
-        << ": " << c;
-    } else
-    if (ext::convert_mode == CVT_PASCAL) { ss
-        << "(* "
-        << ::std::setw(yymet_line_gap)
-        <<      ::yyget_lineno()
-        << ": "
-        << c
-        << "*)" ;
-    }
-    return ss.str();
-}
-
-std::string ext::string2upper(std::string s) {
-    char *p = (char*)s.c_str();
-    while (*p) {
-        *p = toupper(*p);
-        ++p;
-    }
-    return std::string(p);
-}        
-
-std::string ext::string2lower(std::string s) {
-    char *p = (char*)s.c_str();
-    while (*p) {
-        *p = toupper(*p);
-        ++p;
-    }
-    return std::string(p);
-}        
-
-void ext::removeCharsFromString(std::string &str, char* charsToRemove) {
-    for (unsigned int i = 0; i < strlen(charsToRemove); ++i) {
-        str.erase(remove(str.begin(),str.end(),charsToRemove[i]),str.end());
-    }
-}
-
-void ext::replaceStr(std::string &data, std::string toSearch, std::string replaceStr)
-{
-    size_t pos = data.find(toSearch);
-    while( pos != std::string::npos) {
-	    data.replace(pos, toSearch.size(), replaceStr);
-	    pos = data.find(toSearch, pos + replaceStr.size());
-    }
-}
-
-std::vector<std::string> ext::split(const std::string& s, char delimiter)
-{
-    std::vector<std::string> tokens;
-    std::string token;
-    std::istringstream tokenStream(s);
-    while (std::getline(tokenStream, token, delimiter)) {
-       tokens.push_back(token);
-    }
-    return tokens;
-}
-
-size_t ext::strlen(const char * _str) {
-    size_t i = 0;
-    while(_str[i++]);
-    return i;
-}
-
-void add_prg(std::string st) {
-    auto &pas = ext::forth_pascal;
-    ext::forth_prgs prg;
-    prg.id_name = st;
-    ext::current_prg = st;
-    ext::forth_pascal.push_back(prg);
-}
-
-void add_var_bool(std::string st) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_vars_bool ll;
-    ll.id_name = st;
-    prg.vars_bool.push_back(ll);
-}
-void add_var_int(std::string st) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_vars_int ll;
-    ll.id_name = st;
-    prg.vars_int.push_back(ll);
-}
-void add_var_real(std::string st) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_vars_real ll;
-    ll.id_name = st;
-    prg.vars_real.push_back(ll);
-}
-void add_var_char(std::string st) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_vars_char ll;
-    ll.id_name = st;
-    prg.vars_char.push_back(ll);
-}
-void add_var_double(std::string st) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_vars_double ll;
-    ll.id_name = st;
-    prg.vars_double.push_back(ll);
-}
-
-void add_proc(std::string st) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_proc ll;
-    ll.id_name = st;
-    prg.proc.push_back(ll);
-}
-void add_func(std::string st) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_func ll;
-    ll.id_name = st;
-    prg.func.push_back(ll);
-}
-
-
-void add_lbl(std::string s1) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_lbls ll;
-    ext::forth_cods cc;
-
-    ll.id_name = s1;
-    cc.id_stream << s1;
-
-    prg.lbls.push_back(ll);
-    prg.cods.push_back(cc);
-}
-void add_cod(std::string st) {
-    auto &prg = ext::forth_pascal.back();
-    ext::forth_cods cc;
-    cc.id_name = st;
-    cc.id_stream << st;
-    prg.cods.push_back(cc);
-}
