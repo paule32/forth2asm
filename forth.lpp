@@ -50,7 +50,7 @@ gotoline    ^[0-9]+
 ident       [a-zA-Z]+[a-zA-Z0-9_]*
 hexdigit    \B\#(?:[a-fA-F0–9]{6}|[a-fA-F0–9]{3})\b
 
-qoutedstr   (["']).*(['"])
+qoutedstr   {ws}*\'.*\'{ws}*
 
 dimsid0     {ws}*{ident}{ws}*"("
 dimsid1     {ws}*{ident}{ws}*
@@ -74,8 +74,8 @@ l_true      (\.[t|T][r|R][u|U][e|E]\.)
 %x subser subser_parameter dimens ident_or_num_or_str integers reals doubles complexes
 %x precisions characters logicals complexs programs gotos parameters
 %x parameters_num_str
-%x parameters_num_str2 parameters_num_str3
-%x parameters_num_str4 parameters_num_str5 parameters_num_str6
+%x parameters_num_str2 parameters_num_str3 parameters_num_str7
+%x parameters_num_str4 parameters_num_str5 parameters_num_str6 parameters_num_str8
 %x subser_1
 %x subser_2
 %x subser_3
@@ -190,6 +190,7 @@ l_true      (\.[t|T][r|R][u|U][e|E]\.)
 <parameters>{ws}*\({ws}*          { BEGIN(parameters_num_str2); }
 <parameters_num_str2>{ws}*\)      { BEGIN(INITIAL); }
 <parameters_num_str2>{ws}*{ident} {
+std::cout << "str2: " << yytext << "\n";
     ext::current_var = std::string(yytext);
     BEGIN(parameters_num_str3);
 }
@@ -202,10 +203,18 @@ l_true      (\.[t|T][r|R][u|U][e|E]\.)
 <parameters_num_str3>{ws}*\)         { BEGIN(INITIAL); }
 
 <parameters_num_str4>{num}           {
+std::cout << "num4: " << yytext << "\n";
     add_cnst(ext::current_var,std::string(yytext));
     BEGIN(parameters_num_str5);
 }
 <parameters_num_str4>{ident}         {
+std::cout << "id4: " << yytext << "\n";
+    add_cnst(ext::current_var,std::string(yytext));
+    BEGIN(parameters_num_str5);
+}
+<parameters_num_str4>{qoutedstr}     {
+std::cout << "str4: " << yytext << "\n";
+    add_cnst(ext::current_var,std::string(yytext));
     BEGIN(parameters_num_str5);
 }
 
@@ -213,12 +222,35 @@ l_true      (\.[t|T][r|R][u|U][e|E]\.)
 <parameters_num_str5>{ws}*\={ws}*\)  { yyerror(yyerror_str2[LOCALES_LANG]); exit(1); }
 <parameters_num_str5>{ws}*\/{ws}*\)  { yyerror(yyerror_str3[LOCALES_LANG]); exit(1); }
 
-<parameters_num_str5>{ws}*{num}      { BEGIN(parameters_num_str6); }
-<parameters_num_str5>{ws}*{ident}    { BEGIN(parameters_num_str6); }
-
+<parameters_num_str5>{ws}*\,         { BEGIN(parameters_num_str7); }
+<parameters_num_str5>{ws}*\)         { BEGIN(INITIAL); }
+<parameters_num_str7>{ws}*{ident}    {
+    std::cout << "str7: " << yytext << "\n";
+    ext::current_var = std::string(yytext);
+//    add_cnst(ext::current_var,std::string(yytext));
+    BEGIN(parameters_num_str6);
+}
 <parameters_num_str6>{ws}*\,{ws}*\)  { yyerror(yyerror_str1[LOCALES_LANG]); exit(1); }
 <parameters_num_str6>{ws}*\={ws}*\)  { yyerror(yyerror_str2[LOCALES_LANG]); exit(1); }
 <parameters_num_str6>{ws}*\/{ws}*\)  { yyerror(yyerror_str3[LOCALES_LANG]); exit(1); }
+
+<parameters_num_str6>{ws}*\=         { BEGIN(parameters_num_str8); }
+<parameters_num_str8>{ws}*{num} {
+std::cout << "mum1: " << yytext << "\n";
+    add_cnst(ext::current_var,std::string(yytext));
+    BEGIN(parameters_num_str5);
+}
+<parameters_num_str8>{ws}*{ident} {
+std::cout << "mum2: " << yytext << "\n";
+    add_cnst(ext::current_var,std::string(yytext));
+    BEGIN(parameters_num_str5);
+}
+<parameters_num_str8>{ws}*{qoutedstr} {
+std::cout << "mum3: " << yytext << "\n";
+    add_cnst(ext::current_var,std::string(yytext));
+    BEGIN(parameters_num_str5);
+}
+
 
 <parameters_num_str6>{ws}*\,         { BEGIN(parameters_num_str2); }
 <parameters_num_str6>{ws}*\)  {
@@ -475,7 +507,7 @@ int main(int argc, char **argv)
 
     if (optind < argc) {
         while (optind < argc) {
-            if (!(ext::file_pile[optind] = fopen(argv[optind],"r"))) {
+            if (!(ext::file_pile[optind++] = fopen(argv[optind-1],"r"))) {
                 optind += 1;
                 char buffer[200];
                 sprintf(buffer,"can't open file: %s",argv[optind-1]);
@@ -483,8 +515,8 @@ int main(int argc, char **argv)
                 return 1;
             }
             else {
-                fclose(ext::file_pile[optind]);
-                forth_files.push_back(argv[optind]);
+                fclose(ext::file_pile[optind-1]);
+                forth_files.push_back(argv[optind-1]);
             }
         }
     }
