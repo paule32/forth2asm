@@ -1,0 +1,8 @@
+
+forth
+forth.dSYM/Contents/Info.plist
+forth.lex.cpp
+*.output
+forth.tab.cpp
+forth.tab.hpp
+test.forth.pas
