@@ -130,7 +130,6 @@ namespace ext {
     // keep it here, because yylex will double it !
     extern size_t strlen(const char * _str);
 
-<<<<<<< HEAD
     extern ::std::string yypadding(::std::string c);
     extern ::std::string string2upper(::std::string s);
     extern ::std::string string2lower(::std::string s);
@@ -139,7 +138,7 @@ namespace ext {
 
     extern void removeCharsFromString(::std::string &str, char* charsToRemove);
     extern void replaceStr(::std::string &data, ::std::string toSearch, ::std::string replaceStr);
-=======
+
     void removeCharsFromString(::std::string &str, char* charsToRemove) {
         for (unsigned int i = 0; i < strlen(charsToRemove); ++i) {
             str.erase(remove(str.begin(),str.end(),charsToRemove[i]),str.end());
@@ -172,7 +171,6 @@ namespace ext {
         }
         return tokens;
     }
->>>>>>> 0b9300d57634b93d372cae329d752a67ddf632d7
 }
 
 #endif
