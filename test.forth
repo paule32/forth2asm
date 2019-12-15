@@ -54,8 +54,7 @@ end
 
 subroutine nbr (ia, na, ad, ncon, nrr, nr, rc, rk, n, rmax, mc)
 
-*   dimension ia(mc, nr), na()
+   dimension ia(mc, nr), na()
 
 *
 end
-
