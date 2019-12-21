@@ -1,0 +1,739 @@
+%{
+// --------------------------------------------------------------------------------
+// MIT License
+//
+// Copyright (c) 2019 Jens Kallup
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// exec example: fort2pas --mode pascal --auto source.f
+//
+// Legend: --mode = pascal transpile
+//         --auto = _no_ interactive run
+// --------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdlib.h>
+#include <strings.h>
+#include <ctype.h>
+#include <limits.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <limits.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include <iostream>
+#include <sstream>
+#include <fstream>
+#include <istream>
+#include <istream>
+#include <vector>
+#include <algorithm>
+#include <iterator>
+#include <csignal>
+
+#include <boost/config.hpp>
+#include <boost/program_options.hpp>
+
+      namespace po = boost::program_options;
+using namespace      boost::program_options;
+
+#include "common.h"
+
+// forward declarations ...
+void banner(FILE*);
+void setProcessBar(int);
+
+const int CVT_NONE   = 0;
+const int CVT_ASM    = 2;
+const int CVT_PASCAL = 1;   // default ?
+
+int  convert_mode     = 0;
+int  total_lines      = 0;   // progress bar
+
+bool auto_modus   = false;
+
+char *input_file;
+char *reput_file;
+
+std::string config_file;    // name of config file name
+
+#define YYDEBUG 0
+#define YYTYPE yylval
+
+extern "C" int isatty(int);
+extern "C" int usleep(unsigned int);
+
+#include "forth.tab.hh"
+#undef yywrap
+int    yywrap() { return 1; }
+
+int yyerror(const char *p) {
+    fprintf(stderr,"error:%d:%s\n",yylineno,p);
+    return yylineno;
+}
+
+%}
+
+%option noyywrap
+%option caseless
+
+DIGIT       [0-9]
+num         {DIGIT}+
+realnum     [0-9]+\.?[0-9]+
+ws          [ \t\r]
+
+ident       [a-zA-Z]+[a-zA-Z0-9_]*
+
+l_not       (\.[n|N][o|O][t|T]\.)
+l_and       (\.[a|A][n|N][d|D]\.)
+l_or        (\.[o|O][r|R]\.)
+l_xor       (\.[x|X][o|O][r|R]\.)
+l_eqv       (\.[e|E][q|Q][v|V]\.)
+l_neq       (\.[n|N][e|E][q|Q][v|V]\.)
+
+%%
+
+^\!.*\n     { setProcessBar(yylineno); }
+^\*.*\n     { setProcessBar(yylineno); }
+^[c|C].*\n  { setProcessBar(yylineno); }
+
+^[1-9]+[0-9]* {
+    BEGIN(INITIAL);
+}
+
+([l|L][o|O][g|G][i|I][c|C][a|A][l|L])                { return _LOGICALS_  ; }
+([i|I][n|N][t|T][e|E][g|G][e|E][r|R])                { return _INTEGERS_  ; }
+([r|R][e|E][a|A][l|L])                               { return _REALS_     ; }
+([d|D][o|O][u|U][b|B][l|L][e|E])                     { return _DOUBLES_   ; }
+([c|C][o|O][m|M][p|P][l|L][e|E][x|X])                { return _COMPLEXS_  ; }
+([c|C][a|A][r|R][a|A][c|C][t|T][e|E][r|R])           { return _CHARS_     ; }
+([d|D][i|I][m|M][e|E][n|n][s|S][i|I][o|O][n|N])      { return _DIMENS_    ; }
+([s|S][u|U][b|B][r|R][o|O][u|U][t|T][i|I][n|N][e|E]) { return _ROUTINES_  ; }
+([p|P][r|R][o|O][g|G][r|R][a|A][m|M])                { return _PROGRAMS_  ; }
+([g|G][o|O][t|T][o|O])                               { return _GOTOS_     ; }
+([p|P][a|A][r|R][a|A][m|M][e|E][t|T][e|E][r|R])      { return _PARAMETERS_; }
+([e|E][n|N][d|D])                                    { return _ENDS_      ; }
+
+(\.[f|F][a|A][l|L][s|S][e|E]\.) { return _FALSE_; }
+(\.[t|T][r|R][u|U][e|E]\.)      { return _TRUE_ ; }
+
+{ident}     { return _IDS_ ; }
+
+{num}*      { return _NUMS_; }
+{realnum}*  { return _NUMS_; }
+
+\'.*\'      { return _STRINGS_; }
+
+\(          { return '('; }
+\)          { return ')'; }
+\,          { return ','; }
+\=          { return '='; }
+
+\+          { return '+'; }
+\-          { return '-'; }
+\*          { return '*'; }
+\/          { return '/'; }
+
+\^          { return '^'; }
+\%          { return '%'; }
+
+{ws}*       { }
+
+\n          { setProcessBar(yylineno); }
+
+.   {
+    yyerror("unknow character.");
+    exit(1);
+}
+
+<<EOF>>         { return 0; }
+%%
+
+//-- FUNCTION DEFINITIONS ---------------------------------
+class my_bad_cast: public std::bad_cast
+{
+    const char * _source;
+    const char * _destination;
+    std::string  _what;
+
+public:
+    my_bad_cast(const char *src, const char *dst)
+        : _source(src)
+        , _destination(dst) {
+        try {
+            std::ostringstream oss;
+            oss << "could not cast '"
+                << _source
+                << "' into '"
+                << _destination
+                << "'"
+                << std::endl;
+            _what = oss.str();
+        }
+        catch (...) {
+            _what = std::string("");
+        }
+    }
+    const char * source()      const { return _source     ; }
+    const char * destination() const { return _destination; }
+
+    virtual const char *what() const noexcept {
+        return not _what.empty() ? _what.c_str() : std::bad_cast::what();
+    }
+};
+
+template <typename DST, typename SRC>
+DST my_dynamic_cast(SRC &s) {
+    try {
+        return dynamic_cast<DST>(std::forward<SRC>(s));
+    }
+    catch (std::bad_cast const &) {
+        throw my_bad_cast(
+        typeid(SRC).name(),
+        typeid(DST).name());
+    }
+}
+
+// ----------------------------------------------------------------------------
+// a helper function to simplify the main part ...
+// ----------------------------------------------------------------------------
+template<class T>
+std::ostream&
+operator << (std::ostream& os, const std::vector<T>& v) {
+    std::copy(v.begin(), v.end(), std::ostream_iterator<T>(os, " ")); 
+    return os;
+}
+
+// ----------------------------------------------------------------------------
+// display nice exit message ...
+// ----------------------------------------------------------------------------
+static void exitFunction()
+{
+    std::cout << "\nThank's for using !!!\n"
+              << "Please thinking over a donation."
+              << std::endl;
+}
+
+// ----------------------------------------------------------------------------
+// try, to handle signals that can occur in the
+// underlaying OS like Linux ...
+// ----------------------------------------------------------------------------
+static void signalHandler(int signum)
+{
+    std::cerr << "an interrupt signal ("
+              << signum << ") recieved."
+              << std::endl ;
+
+    std::string err_str("");
+    switch (signum) {
+    case SIGABRT: {
+        err_str = std::string(
+        "Abnormal termination of the program\n"
+        "such as a call to abort.");
+    }   break;
+    case SIGBUS: {
+        err_str = std::string(
+        "Indicates an access to an invalid address.");
+    }   break;
+    case SIGPIPE: {
+        err_str = std::string(
+        "Broken pipe (POSIX)\n"
+        "Error condition like trying to write to a socket\n"
+        "which is not connected.");
+    }   break;
+    case SIGSYS: {
+        err_str = std::string(
+        "Bad system call.");
+    }   break;
+    case SIGFPE: {
+        err_str = std::string(
+        "An erroneous arithmetic operation,\n"
+        "such as a divide by zero or an operation\n"
+        "resulting in overflow.");
+    }   break;
+    case SIGILL: {
+        err_str = std::string(
+        "Detection of an illegal instruction.");
+    }   break;
+    case SIGINT: {
+        err_str = std::string(
+        "Reciept of an interactive attention signal.");
+    }   break;
+    case SIGXCPU: {
+        err_str = std::string(
+        "CPU limit exceeded.");
+    }   break;
+    case SIGXFSZ: {
+        err_str = std::string(
+        "File size exceeded.");
+    }   break;
+    case SIGSEGV: {
+        err_str = std::string(
+        "An invalid access to storage");
+    }   break;
+    case SIGTERM: {
+        err_str = std::string(
+        "A termination request sent to the program.");
+    }   break;
+    default: {
+        err_str = std::string(
+        "undefined/unknown SIGNAL recieved.");
+    }   break;
+    }
+
+    std::cerr << "Error: " << err_str <<
+    std::endl ;
+
+    exit(signum);
+}
+
+void
+on_setMode(std::string mode)
+{
+    if (mode == std::string("pascal")) convert_mode = CVT_PASCAL; else
+    if (mode == std::string("asm"   )) convert_mode = CVT_ASM;
+}
+void
+on_setInputFile(std::string ifname)
+{
+    if (ifname.size() < 1) {
+        std::cout << "error: can not open input file." <<
+        std::endl ;
+        return;
+    }
+
+    char *input_file = (char*) malloc(1024);
+    char *reput_file = (char*) malloc(1024);
+
+    strcpy(input_file,ifname.c_str());
+    strcpy(reput_file,ifname.c_str());
+}
+
+#define EXCEPT_HEADER \
+        std::cerr << ASCII::BRED << errstrm << }
+        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+
+// ----------------------------------------------------------------------------
+// main entry / start of program ...
+// ----------------------------------------------------------------------------
+int main(int argc, char **argv)
+{
+    // hook "exit()" function ...
+    std::atexit(exitFunction);
+
+    std::signal(SIGABRT, signalHandler); // 1
+    std::signal(SIGFPE , signalHandler); // 2
+    std::signal(SIGSEGV, signalHandler); // 3
+    std::signal(SIGILL , signalHandler); // 4
+    std::signal(SIGINT , signalHandler); // 5
+    std::signal(SIGSYS , signalHandler); // 6
+    std::signal(SIGBUS , signalHandler); // 7
+    std::signal(SIGXFSZ, signalHandler); // 8
+    std::signal(SIGPIPE, signalHandler); // 9
+    std::signal(SIGXCPU, signalHandler); // 10
+    std::signal(SIGTERM, signalHandler); // 11
+
+    bool show_banner = true;
+    int  result      = 0;
+
+    char buffer[76];
+    // ------------------------------
+    // fast fill buffer with '=' ...
+    // ------------------------------
+    memset((char*)buffer,'=',70);
+    buffer[70] = '\0';
+
+    // --------------------------------------
+    // save code, we use placeholders
+    // of repeating text ...
+    // --------------------------------------
+    std::string errstrm("exception occur:");
+    std::string errwhat("what: ");
+    std::string expossi("cause:");
+
+    try {
+        po::options_description generic{"Common Options"};
+        generic.add_options()
+        ("help,h"   , po::value<std::string>()->default_value(""), "This help screen")
+        ("version,v", "print version string")
+        ("verbose,q", "silence mode" )
+        ("config,c" , po::value<std::string>(&config_file)->default_value("forth.cfg"), "name of configuration file.")
+        ("auto,a"   , po::value<std::string>()->default_value("off"), "automatic mode: on/off")
+        ("mode,m"   , po::value<std::string>()->default_value("pascal"), "mode: pascal, asm");
+
+        // ------------------------------------------------------------
+        // Hidden options, will be allowed both on command line and
+        // in config file, but will not be shown to the user.
+        // ------------------------------------------------------------
+        po::options_description hidden("Hidden options");
+        hidden.add_options()
+            ("input-file", po::value< std::vector<std::string> >(), "input file")
+            ;
+
+        po::options_description cmdline_options;
+        cmdline_options.add(generic).add(hidden);
+
+        po::options_description visible("Allowed options");
+        visible.add(generic);
+
+        po::positional_options_description p;
+        p.add("input-file", -1);
+
+        po::variables_map vm;
+        try {
+            po::store(po::command_line_parser(argc, argv).
+                      options(cmdline_options).
+                      positional(p).run(), vm);
+            po::notify(vm);
+
+            std::ifstream ifs(config_file.c_str());
+            if (!ifs) {
+                std::cout << "error: can not open config file: "
+                          << config_file
+                          << std::endl ;
+                return 0;
+            }
+
+            if (vm.count("verbose")) {
+                show_banner = false;
+            }
+            if (show_banner == true) {
+                banner(stdout);
+            }
+            if (argc < 2) {
+                std::cerr << "no parameter given."      <<
+                std::endl << "use -h or --help for help screen."  <<
+                std::endl ;
+                return 1;
+            }
+
+            std::string help = vm["help"].as<std::string>();
+            if (help.empty()) {
+                std::cout << visible;
+                return 0;
+            }   else {
+                std::cout << "infomaterial" <<
+                std::endl ;
+                return 0;
+            }
+
+            std::string mode = vm["mode"].as<std::string>();
+            if (mode.empty()) {
+                convert_mode = CVT_PASCAL;
+            }   else {
+                if (mode == std::string("pascal")) convert_mode = CVT_PASCAL; else
+                if (mode == std::string("asm"   )) convert_mode = CVT_ASM;    else {
+                    std::cerr << "error: wrong argument." <<
+                    std::endl ;
+                    return 1;
+                }
+            }
+
+            std::string au = vm["auto"].as<std::string>();
+            if (au.empty()) {
+                auto_modus = false;
+            }   else {
+                if (au == std::string("off")) auto_modus = false; else
+                if (au == std::string("on" )) auto_modus = true;  else {
+                    std::cerr << "error: wrong argument." <<
+                    std::endl ;
+                    return 1;
+                }
+            }
+
+            if (vm.count("version")) {
+                std::cout << "Fortan to Pascal"       <<
+                std::endl << "Version 0.0.1 alpha  -> use -h for help screen."  <<
+                std::endl ;
+                return  0 ;
+            }
+
+            if (vm.count("input-file")) {
+                std::cout << "Input files are: "
+                          << vm["input-file"].as< std::vector<std::string> >() << "\n";
+            }
+        }
+        catch (po::error &e) {
+            std::cerr << e.what() <<
+            std::endl ;
+            return 1;
+        }
+
+        if (convert_mode == 0)
+            convert_mode  = CVT_PASCAL;
+        if (convert_mode == CVT_PASCAL) strcat(reput_file,".pas"); else
+        if (convert_mode == CVT_ASM   ) strcat(reput_file,".asm");
+
+        FILE *fr = fopen(input_file,"r"); if (!fr) return yyerror("can not open input file!");
+        FILE *fw = fopen(reput_file,"w"); if (!fw) return yyerror("can not open write file!");
+
+        // count lines
+        std::ifstream af(input_file);
+        std::string line;
+        total_lines =  0;
+
+        while (std::getline(af,line))
+        ++total_lines;
+        af.close();
+
+        fseek(fr, 0, SEEK_SET);
+
+        yyset_in (fr);  // input  file
+        yyset_out(fw);  // output file
+
+        yylineno = 1;
+        
+        // parse/lex code ...
+        result = yyparse();
+
+        free(input_file);
+        free(reput_file);
+        fclose(fr);
+        fclose(fw);
+
+        std::cout << "\ndone." <<
+        std::endl ;
+    }
+    catch (std::bad_alloc &ex) {
+        std::cerr << ASCII::BRED << errstrm <<
+        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+
+        std::endl << expossi     <<
+        std::endl << buffer      <<
+        std::endl <<
+
+        "1: a library, or this program allocates mempry without feeing it,"   << std::endl <<
+        "2: a library, or this program need more memory as the system"        << std::endl <<
+        "   resources grant's for this program,"                              << std::endl <<
+        "3: a library, or this program tries to allocate a big memory block," << std::endl <<
+        "   that is bigger as the system ressource grant's."                  << std::endl ;
+
+        return 1;
+    }
+    catch (std::bad_cast &ex)  {
+        std::cerr << ASCII::BRED << errstrm <<
+        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+
+        std::endl << expossi     <<
+        std::endl << buffer      <<
+        std::endl <<
+
+        "1: std::bad_cast is thrown, when a 'dynamic_cast'" << std::endl <<
+        "   fails at runtime."                              << std::endl ;
+
+        return 1;
+    }
+    catch (std::bad_typeid &ex) {
+        std::cerr << ASCII::BRED << errstrm <<
+        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+
+        std::endl << expossi     <<
+        std::endl << buffer      <<
+        std::endl <<
+
+        "1: This exception is thrown by the typeid operator, when the operand" << std::endl <<
+        "   for typeid is a NULL pointer."                                     << std::endl ;
+
+        return 1;
+    }
+    catch (std::bad_exception &ex) {
+        std::cerr << ASCII::BRED << errstrm <<
+        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+
+        std::endl << expossi     <<
+        std::endl << buffer      <<
+        std::endl <<
+
+        "1: This class describe an exception, that can be thrown from an" << std::endl <<
+        "   unexpected handler."                                          << std::endl ;
+
+        return 1;
+    }
+    catch (std::domain_error &ex) {
+        EXCEPT_HEADER
+        std::endl << "type:   "  << typeid(ex).name() <<
+        std::endl <<
+        std::endl << expossi     <<
+        std::endl << buffer      <<
+        std::endl <<
+
+        "1: Domain and range errors are both used when dealing with mathematical" << std::endl <<
+        "   functions."                                                           << std::endl <<
+        "   On the one hand, the domain of a function is the set of values that"  << std::endl <<
+        "   can be accepted by the function. For example, the domain of the"      << std::endl <<
+        "   root square function is the set of positive real numbers."            << std::endl <<
+        "   Therefore, a domain_error exception is to be thrown when the"         << std::endl <<
+        "   arguments of a function are not contained in its domain."             << std::endl <<
+        "   On the other hand, the range of a function is the set of values that" << std::endl <<
+        "   the function can return. For example, the range of a function like"   << std::endl <<
+        "   this one:"                                                            << std::endl <<
+        "   f(x) = -x^2"                                                          << std::endl <<
+        "   is the set of negative real numbers. So what is the point of the"     << std::endl <<
+        "   range_error ? If the arguments of the function are in its domain,"    << std::endl <<
+        "   then the result must be in the range, so we should not have any"      << std::endl <<
+        "   errors wrt the range...However, sometimes the value can be defined,"  << std::endl <<
+        "   but without being representable,"                                     << std::endl ;
+
+        return 1;
+    }
+    catch (std::logic_error &ex) {
+        std::cerr << ASCII::BRED << errstrm <<
+        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+
+        std::endl << buffer      <<
+        std::endl << expossi     <<
+        std::endl <<
+
+        "1: It is a logic error exception. It reports errors that are" << std::endl <<
+        "   a consequence of faulty logic within the program such as"  << std::endl <<
+        "   violating logical preconditions or class invariants and"   << std::endl <<
+        "   may be preventable."                                       << std::endl ;
+
+        return 1;
+    }
+    catch (std::invalid_argument &ex) {
+        std::cerr << ASCII::BRED << errstrm <<
+        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+
+        std::endl << expossi     <<
+        std::endl << buffer      <<
+        std::endl <<
+
+        "1: The class serves as the base class for all exceptions thrown to" << std::endl <<
+        "   report an invalid argument."                                     << std::endl ;
+
+        return 1;
+    }
+    catch (std::length_error &ex) {
+        std::cerr << ASCII::BRED << errstrm <<
+        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+
+        std::endl << expossi     <<
+        std::endl << buffer      <<
+        std::endl <<
+
+        "1: It is a length error exception and this class defines the type of" << std::endl <<
+        "   objects thrown as exceptions to report a length error."            << std::endl ;
+
+        return 1;
+    }
+    catch (std::out_of_range &ex) {
+        std::cerr << errstrm   <<
+        std::endl << errwhat   << ex.what() <<
+        std::endl << expossi   <<
+        std::endl << buffer    <<
+        std::endl <<
+
+        "1: It is an out-of-range exception and this class defines the type"  << std::endl <<
+        "   of objects thrown as exceptions to report an out-of-range error." << std::endl ;
+
+        return 1;
+    }
+    catch (std::range_error &ex) {
+        std::cerr << errstrm   <<
+        std::endl << errwhat   << ex.what() <<
+        std::endl << expossi   <<
+        std::endl << buffer    <<
+        std::endl <<
+
+        "1: It is a runtime error exception and this class defines the type" << std::endl <<
+        "   of objects thrown as exceptions to report errors that can only"  << std::endl <<
+        "   be detected during runtime."                                     << std::endl ;
+
+        return 1;
+    }
+    catch (std::overflow_error &ex) {
+        std::cerr << errstrm   <<
+        std::endl << errwhat   << ex.what() <<
+        std::endl << expossi   <<
+        std::endl << buffer    <<
+        std::endl <<
+
+        "1: It is a an overflow error exception and this class defines the" << std::endl <<
+        "   type of objects thrown as exceptions to arithmetic overflow"    << std::endl <<
+        "   errors."                                                        << std::endl ;
+
+        return 1;
+    }
+    catch (std::underflow_error &ex) {
+        std::cerr << errstrm   <<
+        std::endl << errwhat   << ex.what() <<
+        std::endl << expossi   <<
+        std::endl << buffer    <<
+        std::endl <<
+
+        "1: It is a an underflow error exception and this class defines the" << std::endl <<
+        "   type of objects thrown as exceptions to arithmetic underflow"    << std::endl <<
+        "   errors."                                                         << std::endl ;
+
+        return 1;
+    }
+    catch (std::exception &ex) {
+        std::cerr << errstrm << ex.what() << std::endl ;
+        return 1;
+    }
+    catch (...) {
+        std::cerr << errstrm <<
+        std::endl << errwhat << "Exception of unknown type" <<
+        std::endl;
+        return  1;
+    }
+
+    return result;
+}
+
+// ----------------------------------------------------------------------------
+// visualize translate process ...
+// ----------------------------------------------------------------------------
+void setProcessBar(int yyl) {
+    int p = ((yyl * 100) / total_lines);
+    int n = (p / 5);
+
+    static char buffer[32];
+    memset(buffer,'=',n);
+    buffer[n] = 0;
+
+    fprintf(stdout,"\r\033[2K%3d\%: [%-20s]: Lines: %-5d",
+    p,buffer,yyl);
+    fflush (stdout);
+
+    usleep(10000);
+}
+
+// ----------------------------------------------------------------------------
+// Code of Conduct - please keep this notice intact - thank's ...
+// ----------------------------------------------------------------------------
+void banner(FILE *out)
+{
+    char bufferA[76];
+    char bufferC[] = "(* %-74.74s *)\n";
+    char bufferD[] = "(* %s *)\n";
+
+    memset((char*)bufferA,'=',74);
+    bufferA[74] = '\0';
+
+    fprintf(out,bufferD,bufferA);
+    fprintf(out,bufferC,(char*)"Fortran to Pascal transpiller.");
+    fprintf(out,bufferC,(char*)" ");
+    fprintf(out,bufferC,(char*)"(c) 2019 by Jens Kallup - non-profit Software");
+    fprintf(out,bufferC,(char*)"(c) 2019 by Michael Schilling");
+    fprintf(out,bufferC,(char*)"all rights reserved.");
+    fprintf(out,bufferD,bufferA);
+}
