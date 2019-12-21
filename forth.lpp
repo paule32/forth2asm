@@ -39,6 +39,7 @@
 #include <sys/stat.h>
 
 #include <iostream>
+#include <string>
 #include <sstream>
 #include <fstream>
 #include <istream>
@@ -73,6 +74,13 @@ char *input_file;
 char *reput_file;
 
 std::string config_file;    // name of config file name
+
+// placeholders ...
+std::string errstrm;
+std::string errwhat;
+std::string expossi;
+
+char exbuffer[76];          // underline char: =
 
 #define YYDEBUG 0
 #define YYTYPE yylval
@@ -215,8 +223,7 @@ DST my_dynamic_cast(SRC &s) {
 // a helper function to simplify the main part ...
 // ----------------------------------------------------------------------------
 template<class T>
-std::ostream&
-operator << (std::ostream& os, const std::vector<T>& v) {
+std::ostream& operator << (std::ostream& os, const std::vector<T>& v) {
     std::copy(v.begin(), v.end(), std::ostream_iterator<T>(os, " ")); 
     return os;
 }
@@ -237,8 +244,9 @@ static void exitFunction()
 // ----------------------------------------------------------------------------
 static void signalHandler(int signum)
 {
-    std::cerr << "an interrupt signal ("
-              << signum << ") recieved."
+    std::cerr << std::string("an interrupt signal (")
+              << signum
+              << std::string(") recieved.")
               << std::endl ;
 
     std::string err_str("");
@@ -259,8 +267,7 @@ static void signalHandler(int signum)
         "which is not connected.");
     }   break;
     case SIGSYS: {
-        err_str = std::string(
-        "Bad system call.");
+        err_str = std::string("Bad system call.");
     }   break;
     case SIGFPE: {
         err_str = std::string(
@@ -298,7 +305,7 @@ static void signalHandler(int signum)
     }   break;
     }
 
-    std::cerr << "Error: " << err_str <<
+    std::cerr << std::string("Error: ") << err_str <<
     std::endl ;
 
     exit(signum);
@@ -310,25 +317,36 @@ on_setMode(std::string mode)
     if (mode == std::string("pascal")) convert_mode = CVT_PASCAL; else
     if (mode == std::string("asm"   )) convert_mode = CVT_ASM;
 }
+
 void
 on_setInputFile(std::string ifname)
 {
     if (ifname.size() < 1) {
-        std::cout << "error: can not open input file." <<
+        std::cerr << std::string("error: can not open input file.") <<
         std::endl ;
         return;
     }
 
-    char *input_file = (char*) malloc(1024);
-    char *reput_file = (char*) malloc(1024);
+    input_file = new char[1024];
+    reput_file = new char[1024];
 
     strcpy(input_file,ifname.c_str());
     strcpy(reput_file,ifname.c_str());
 }
 
-#define EXCEPT_HEADER \
-        std::cerr << ASCII::BRED << errstrm << }
-        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
+// ----------------------------------------------------------------------------
+// display header when exception was throw ...
+// ----------------------------------------------------------------------------
+static void EXCEPT_HEADER(std::string ex)
+{
+    std::cerr  <<
+        ASCII::BRED << errstrm   << std::endl <<
+        ASCII::BGRN << errwhat   <<
+        ASCII::BCYN << ex        <<
+        ASCII::CYN  << std::endl <<
+        expossi     << std::endl <<
+        exbuffer    << std::endl ;
+}
 
 // ----------------------------------------------------------------------------
 // main entry / start of program ...
@@ -353,20 +371,19 @@ int main(int argc, char **argv)
     bool show_banner = true;
     int  result      = 0;
 
-    char buffer[76];
     // ------------------------------
     // fast fill buffer with '=' ...
     // ------------------------------
-    memset((char*)buffer,'=',70);
-    buffer[70] = '\0';
+    memset((char*)exbuffer,'=',70);
+    exbuffer[70] = '\0';
 
     // --------------------------------------
     // save code, we use placeholders
     // of repeating text ...
     // --------------------------------------
-    std::string errstrm("exception occur:");
-    std::string errwhat("what: ");
-    std::string expossi("cause:");
+    errstrm = std::string("exception occur:");
+    errwhat = std::string("what: ");
+    expossi = std::string("cause:");
 
     try {
         po::options_description generic{"Common Options"};
@@ -394,7 +411,7 @@ int main(int argc, char **argv)
         visible.add(generic);
 
         po::positional_options_description p;
-        p.add("input-file", -1);
+        p.add("input-file", 1);
 
         po::variables_map vm;
         try {
@@ -467,7 +484,8 @@ int main(int argc, char **argv)
 
             if (vm.count("input-file")) {
                 std::cout << "Input files are: "
-                          << vm["input-file"].as< std::vector<std::string> >() << "\n";
+                          << vm["input-file"].as< std::vector<std::string> >() <<
+                std::endl ;
             }
         }
         catch (po::error &e) {
@@ -503,77 +521,52 @@ int main(int argc, char **argv)
         // parse/lex code ...
         result = yyparse();
 
-        free(input_file);
-        free(reput_file);
+        delete input_file;
+        delete reput_file;
+
         fclose(fr);
         fclose(fw);
 
         std::cout << "\ndone." <<
         std::endl ;
     }
+    // ----------------------------------------------------------------
+    // catch block's that try to explain, why exception is throwed ...
+    // ---------------------------------------------------------------- 
     catch (std::bad_alloc &ex) {
-        std::cerr << ASCII::BRED << errstrm <<
-        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
-
-        std::endl << expossi     <<
-        std::endl << buffer      <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: a library, or this program allocates mempry without feeing it,"   << std::endl <<
         "2: a library, or this program need more memory as the system"        << std::endl <<
         "   resources grant's for this program,"                              << std::endl <<
         "3: a library, or this program tries to allocate a big memory block," << std::endl <<
         "   that is bigger as the system ressource grant's."                  << std::endl ;
-
         return 1;
     }
     catch (std::bad_cast &ex)  {
-        std::cerr << ASCII::BRED << errstrm <<
-        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
-
-        std::endl << expossi     <<
-        std::endl << buffer      <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: std::bad_cast is thrown, when a 'dynamic_cast'" << std::endl <<
         "   fails at runtime."                              << std::endl ;
-
         return 1;
     }
     catch (std::bad_typeid &ex) {
-        std::cerr << ASCII::BRED << errstrm <<
-        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
-
-        std::endl << expossi     <<
-        std::endl << buffer      <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: This exception is thrown by the typeid operator, when the operand" << std::endl <<
         "   for typeid is a NULL pointer."                                     << std::endl ;
-
         return 1;
     }
     catch (std::bad_exception &ex) {
-        std::cerr << ASCII::BRED << errstrm <<
-        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
-
-        std::endl << expossi     <<
-        std::endl << buffer      <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: This class describe an exception, that can be thrown from an" << std::endl <<
         "   unexpected handler."                                          << std::endl ;
-
         return 1;
     }
     catch (std::domain_error &ex) {
-        EXCEPT_HEADER
-        std::endl << "type:   "  << typeid(ex).name() <<
-        std::endl <<
-        std::endl << expossi     <<
-        std::endl << buffer      <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: Domain and range errors are both used when dealing with mathematical" << std::endl <<
         "   functions."                                                           << std::endl <<
         "   On the one hand, the domain of a function is the set of values that"  << std::endl <<
@@ -590,110 +583,69 @@ int main(int argc, char **argv)
         "   then the result must be in the range, so we should not have any"      << std::endl <<
         "   errors wrt the range...However, sometimes the value can be defined,"  << std::endl <<
         "   but without being representable,"                                     << std::endl ;
-
         return 1;
     }
     catch (std::logic_error &ex) {
-        std::cerr << ASCII::BRED << errstrm <<
-        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
-
-        std::endl << buffer      <<
-        std::endl << expossi     <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: It is a logic error exception. It reports errors that are" << std::endl <<
         "   a consequence of faulty logic within the program such as"  << std::endl <<
         "   violating logical preconditions or class invariants and"   << std::endl <<
         "   may be preventable."                                       << std::endl ;
-
         return 1;
     }
     catch (std::invalid_argument &ex) {
-        std::cerr << ASCII::BRED << errstrm <<
-        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
-
-        std::endl << expossi     <<
-        std::endl << buffer      <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: The class serves as the base class for all exceptions thrown to" << std::endl <<
         "   report an invalid argument."                                     << std::endl ;
-
         return 1;
     }
     catch (std::length_error &ex) {
-        std::cerr << ASCII::BRED << errstrm <<
-        std::endl << ASCII::BGRN << errwhat << ASCII::BCYN << ex.what() << ASCII::CYN <<
-
-        std::endl << expossi     <<
-        std::endl << buffer      <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: It is a length error exception and this class defines the type of" << std::endl <<
         "   objects thrown as exceptions to report a length error."            << std::endl ;
-
         return 1;
     }
     catch (std::out_of_range &ex) {
-        std::cerr << errstrm   <<
-        std::endl << errwhat   << ex.what() <<
-        std::endl << expossi   <<
-        std::endl << buffer    <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: It is an out-of-range exception and this class defines the type"  << std::endl <<
         "   of objects thrown as exceptions to report an out-of-range error." << std::endl ;
-
         return 1;
     }
     catch (std::range_error &ex) {
-        std::cerr << errstrm   <<
-        std::endl << errwhat   << ex.what() <<
-        std::endl << expossi   <<
-        std::endl << buffer    <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: It is a runtime error exception and this class defines the type" << std::endl <<
         "   of objects thrown as exceptions to report errors that can only"  << std::endl <<
         "   be detected during runtime."                                     << std::endl ;
-
         return 1;
     }
     catch (std::overflow_error &ex) {
-        std::cerr << errstrm   <<
-        std::endl << errwhat   << ex.what() <<
-        std::endl << expossi   <<
-        std::endl << buffer    <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: It is a an overflow error exception and this class defines the" << std::endl <<
         "   type of objects thrown as exceptions to arithmetic overflow"    << std::endl <<
         "   errors."                                                        << std::endl ;
-
         return 1;
     }
     catch (std::underflow_error &ex) {
-        std::cerr << errstrm   <<
-        std::endl << errwhat   << ex.what() <<
-        std::endl << expossi   <<
-        std::endl << buffer    <<
-        std::endl <<
-
+        ::EXCEPT_HEADER(ex.what());
+        std::cerr <<
         "1: It is a an underflow error exception and this class defines the" << std::endl <<
         "   type of objects thrown as exceptions to arithmetic underflow"    << std::endl <<
         "   errors."                                                         << std::endl ;
-
         return 1;
     }
     catch (std::exception &ex) {
-        std::cerr << errstrm << ex.what() << std::endl ;
+        ::EXCEPT_HEADER(ex.what());
         return 1;
     }
     catch (...) {
-        std::cerr << errstrm <<
-        std::endl << errwhat << "Exception of unknown type" <<
-        std::endl;
-        return  1;
+        ::EXCEPT_HEADER(std::string("Exception of unknown type"));
+        return 1;
     }
 
     return result;
