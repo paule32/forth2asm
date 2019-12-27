@@ -93,6 +93,10 @@
 #include <exception>
 #include <fstream>
 
+#include "hint.h"
+#include "helpViewer.hpp"
+#include "helpWindow.h"
+
 const int cmAboutCmd        = 106;
 const int cmPuzzleCmd       = 101;
 const int cmCalendarCmd     = 102;

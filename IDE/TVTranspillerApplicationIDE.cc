@@ -21,8 +21,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 // --------------------------------------------------------------------------------
-#include "TVTranspiller.h"
-
 #include <boost/config.hpp>
 #include <boost/program_options/detail/config_file.hpp>
 #include <boost/property_tree/ini_parser.hpp>
@@ -32,10 +30,10 @@
 
 namespace po = boost::program_options;
 
+#include "TVTranspiller.h"
+
 uchar TVTranspillerApplicationIDE:: systemMenuIcon[] = "~\360~";
 uchar TVTranspillerApplicationIDE::osystemMenuIcon[] = "~\360~";
-
-bool  helpActive = false;
 
 TVCodePageCallBack
 TVTranspillerApplicationIDE::oldCPCallBack = nullptr;
@@ -44,32 +42,10 @@ static char *TV_DataFile = "forti.dat";
 static char *TV_HelpFile = "forti.hlp";
 static char *TV_ConfFile = "forti.ini";
 
-class THintStatusLine : public TStatusLine
-{
-public:
-    THintStatusLine(TRect& r, TStatusDef& d): TStatusLine(r,d) { }
-    const char * hint(ushort);
-};
+int winNumber = 0;
 
-const char *
-THintStatusLine::hint(ushort context)
-{
-    switch (context)
-    {
-        case hcNocontext:
-        return "~F1~ Help  ~Alt-X~ Exit";
-
-        case hcExit:
-        return "Alt-X to Exit";
-
-        case hcFOpen:
-        return "Open a File";
-
-        case hcAbout:
-        return "View the About Box";
-    }
-    return "Ready for input ...";
-}
+extern bool            helpActive;
+extern TMyHelpWindow * helpWindow;
 
 TVTranspillerApplicationIDE::TVTranspillerApplicationIDE(void)
     : TProgInit( &TVTranspillerApplicationIDE::initStatusLine,
@@ -529,11 +505,40 @@ void
 TVTranspillerApplicationIDE::handleEvent(TEvent& event)
 {
     TApplication::handleEvent(event);
+
     switch (event.what) {
     case evCommand:
     {
         switch (event.message.command)
         {
+        case cmHelp:
+            if (!helpActive) {
+                if (nullptr != helpWindow)
+                CLY_destroy(helpWindow);
+                hnl:
+                helpWindow = new TMyHelpWindow(TRect(5,5,40,15));
+                if (helpWindow != 0) {
+                    deskTop->insert(helpWindow);
+                    //deskTop->execView(helpWindow);
+                    helpActive = true;
+                }
+                else {
+                    messageBox("help windpw could not be allocate.",
+                    mfError | mfOKButton);
+                    helpActive = false;
+                    helpWindow = nullptr;
+                    return;
+                }
+            }   else {
+                if (helpWindow != 0) {
+                    //CLY_destroy(helpWindow);
+                    helpWindow = nullptr;
+                    helpActive = false;
+                    goto hnl;
+                }
+            }
+            clearEvent(event);
+            break;
         case cmAboutCmd:
             aboutDlgBox();
             break;
@@ -638,39 +643,7 @@ TVTranspillerApplicationIDE::getPalette() const
 void
 TVTranspillerApplicationIDE::getEvent(TEvent& event)
 {
-    TWindow   * w;
-    THelpFile * hFile;
-    fpstream  * helpStrm;
-    static bool helpInUse = false;
-
     TApplication::getEvent(event);
-    switch (event.what)
-    {
-    case evCommand:
-        if ((event.message.command == cmHelp) && (helpInUse == false)) {
-            helpInUse = true;
-            helpStrm  = new fpstream("/home/jens/Projekte/dBase4Linux/source/parser/forth/forti.hlp", CLY_IOSIn | CLY_IOSBin);
-            hFile     = new THelpFile(*helpStrm);
-            if (!helpStrm) {
-                messageBox("help stream file not available.",
-                mfOKButton | mfError);
-                delete hFile;
-                clearEvent(event);
-                return;
-            }
-            w = new THelpWindow(hFile, getHelpCtx());
-            if (validView(w) != 0) {
-                execView(w);
-                CLY_destroy(w);
-            }
-            clearEvent(event);
-        }   helpInUse = false;
-        break;
-    case evMouseDown:
-        if (event.mouse.buttons != 1)
-            event.what = evNothing;
-        break;
-    }
 }
 
 void
